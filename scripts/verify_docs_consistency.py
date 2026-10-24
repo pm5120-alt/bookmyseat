@@ -36,9 +36,21 @@ if CURRENT_AUDIT.is_file():
         sqlite = None
     else:
         sqlite = {"ran": int(current_run.group(1)), "ok": True, "detail": ""}
+    report_text = (ROOT / "docs" / "TEST_REPORT.md").read_text(encoding="utf-8")
+    uploaded = re.search(
+        r"^## Uploaded submission snapshot verification\b(.*?)(?=^## |\Z)",
+        report_text,
+        re.M | re.S,
+    )
+    uploaded_run = re.search(
+        r"`manage\.py test` passed \*\*(\d+) tests, 0 failures, 0 skips\*\*",
+        uploaded.group(1) if uploaded else "",
+    )
+    if uploaded_run:
+        sqlite = {"ran": int(uploaded_run.group(1)), "ok": True, "detail": ""}
     postgres = parse(expected_logs[1]) if (EVIDENCE / expected_logs[1]).is_file() else None
     conc = parse(expected_logs[2]) if (EVIDENCE / expected_logs[2]).is_file() else None
-    print("Current source evidence is from the local acceptance audit; PostgreSQL/concurrency counts remain historical when present.")
+    print("Latest SQLite evidence is taken from the uploaded-snapshot verification when present; PostgreSQL/concurrency counts remain historical when present.")
 elif all((EVIDENCE / name).is_file() for name in expected_logs):
     sqlite = parse(expected_logs[0])
     postgres = parse(expected_logs[1])

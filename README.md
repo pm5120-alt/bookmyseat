@@ -20,6 +20,8 @@ Requirements: Python 3.12 or newer. The bundled Docker image uses Python 3.13. T
 4. Create an administrator securely. For a full local owner account, use `.venv\Scripts\python manage.py createsuperuser`. For the assignment's separate demo dashboard account, use the `create_demo_admin` command below; do not use a production account as the demo account.
 5. Start locally: `.venv\Scripts\python manage.py runserver`; visit `/`, `/movies/`, and `/admin/`.
 
+For an optional demo catalogue on a fresh or disposable database, run `.venv\Scripts\python manage.py seed_demo_catalogue --yes` after migrations. It adds four fictional movies, one demo theatre and screen, 48 seats, and 12 upcoming shows. It never runs automatically or edits/deletes existing records; omit it if you want to keep the catalogue empty.
+
 The settings fail closed if a strong explicit `DJANGO_SECRET_KEY` is absent. `DJANGO_DEBUG` defaults to false; the example turns it on for local development. Production mode additionally requires PostgreSQL, a non-local allowed host, an HTTPS `SITE_URL`, a Celery broker, a non-console email backend, and Razorpay credentials. `DATABASE_URL` is omitted from the local example and defaults to the project SQLite path; use PostgreSQL in production.
 
 ### Assignment demo administrator

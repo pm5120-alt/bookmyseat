@@ -2242,3 +2242,18 @@ class DomainTestCase(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.status, Booking.PENDING)
         self.assertFalse(Payment.objects.filter(booking=booking, status=Payment.CAPTURED).exists())
+
+
+class SeedDemoCatalogueTests(TestCase):
+    def test_requires_confirmation_and_is_idempotent_without_overwriting(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_demo_catalogue", stdout=StringIO())
+        self.assertEqual(Movie.objects.count(), 0)
+        call_command("seed_demo_catalogue", "--yes", stdout=StringIO())
+        movies, shows, seats = Movie.objects.count(), Show.objects.count(), Seat.objects.count()
+        self.assertEqual((movies, shows, seats), (4, 12, 48))
+        Movie.objects.filter(name="Demo: Paper Moon Cafe").update(description="edited by admin")
+        call_command("seed_demo_catalogue", "--yes", stdout=StringIO())
+        self.assertEqual((Movie.objects.count(), Show.objects.count(), Seat.objects.count()), (movies, shows, seats))
+        self.assertEqual(Movie.objects.get(name="Demo: Paper Moon Cafe").description, "edited by admin")

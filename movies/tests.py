@@ -2253,7 +2253,35 @@ class SeedDemoCatalogueTests(TestCase):
         call_command("seed_demo_catalogue", "--yes", stdout=StringIO())
         movies, shows, seats = Movie.objects.count(), Show.objects.count(), Seat.objects.count()
         self.assertEqual((movies, shows, seats), (4, 12, 48))
+        scheduled = list(Show.objects.select_related("movie").order_by("starts_at"))
+        for earlier, later in zip(scheduled, scheduled[1:]):
+            earlier_ends = earlier.starts_at + timedelta(minutes=earlier.movie.duration_minutes)
+            self.assertLessEqual(earlier_ends, later.starts_at)
         Movie.objects.filter(name="Demo: Paper Moon Cafe").update(description="edited by admin")
         call_command("seed_demo_catalogue", "--yes", stdout=StringIO())
         self.assertEqual((Movie.objects.count(), Show.objects.count(), Seat.objects.count()), (movies, shows, seats))
         self.assertEqual(Movie.objects.get(name="Demo: Paper Moon Cafe").description, "edited by admin")
+
+    def test_seeded_shows_do_not_overlap_existing_screen_schedule(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from movies.management.commands.seed_demo_catalogue import DEMO_SCREEN, DEMO_THEATER
+
+        theater = Theater.objects.create(name=DEMO_THEATER)
+        screen = Screen.objects.create(theater=theater, name=DEMO_SCREEN)
+        existing_movie = Movie.objects.create(name="Existing screening", duration_minutes=180)
+        existing_start = (timezone.now() + timedelta(days=1)).replace(
+            hour=10, minute=0, second=0, microsecond=0
+        )
+        existing_show = Show.objects.create(
+            theater=theater, screen=screen, movie=existing_movie, starts_at=existing_start
+        )
+
+        call_command("seed_demo_catalogue", "--yes", stdout=StringIO())
+
+        scheduled = list(Show.objects.filter(screen=screen).select_related("movie").order_by("starts_at"))
+        self.assertEqual(scheduled[0].pk, existing_show.pk)
+        self.assertEqual(scheduled[0].starts_at, existing_start)
+        for earlier, later in zip(scheduled, scheduled[1:]):
+            earlier_ends = earlier.starts_at + timedelta(minutes=earlier.movie.duration_minutes)
+            self.assertLessEqual(earlier_ends, later.starts_at)

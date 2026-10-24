@@ -144,6 +144,14 @@ class DomainTestCase(TestCase):
         for placeholder in ("Event 1", "Premiere 1", "Music 1"):
             self.assertNotContains(response, placeholder)
 
+    def test_home_shows_upcoming_catalogue_before_first_paid_booking(self):
+        # A fresh demo has eligible upcoming movies but no captured bookings yet.
+        # The homepage should not be blank just because nothing is trending.
+        response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self.movie, list(response.context["movies"]))
+        self.assertContains(response, "A Film")
+
     def test_youtube_url_validation_normalizes_and_rejects_unsafe_domains(self):
         for source in ("abcdefghijk", "https://youtu.be/abcdefghijk", "https://www.youtube.com/watch?v=abcdefghijk&t=5", "https://youtube.com/embed/abcdefghijk"):
             self.assertEqual(extract_youtube_video_id(source), "abcdefghijk")

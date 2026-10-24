@@ -9,6 +9,7 @@ services:
       export DJANGO_DEBUG=true &&
       export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" &&
       python manage.py migrate --noinput &&
+      python manage.py shell -c 'import os; from django.core.management import call_command; from movies.models import Movie; demo_mode = os.environ.get("BOOKMYSEAT_DEMO_MODE", "").lower() == "true"; movie_count = Movie.objects.count(); print(f"Demo seed guard: demo_mode={demo_mode}, movies={movie_count}"); call_command("seed_demo_catalogue", yes=True) if demo_mode and movie_count == 0 else print("Demo seed skipped: demo mode disabled or catalogue already populated.")' &&
       python manage.py collectstatic --noinput
     startCommand: gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT
     healthCheckPath: /

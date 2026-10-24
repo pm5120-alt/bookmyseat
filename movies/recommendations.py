@@ -7,11 +7,13 @@ from .models import Booking, Movie, Payment, RecentlyViewedMovie, Show
 
 
 def recommendations_for_user(user=None, *, exclude_movie_id=None, limit=8, now=None):
-    """Rank eligible upcoming movies from real user history, with trending fallback.
+    """Rank upcoming movies using history, trending, then catalogue fallback.
 
     Each distinct overlapping genre contributes 2 points and each overlapping
     language contributes 1 point. Already-booked movies and movies without an
-    active upcoming show are never recommended.
+    active upcoming show are never recommended. If there is no history or booking
+    data yet (common on a fresh demo), show eligible catalogue movies instead of
+    rendering an empty recommendations section.
     """
     now = now or timezone.now()
     booked = Booking.objects.filter(
@@ -71,4 +73,11 @@ def recommendations_for_user(user=None, *, exclude_movie_id=None, limit=8, now=N
             distinct=True,
         ),
     ).order_by("-recent_bookings", "-rating", "name", "pk")
-    return list(trending[:limit])
+    trending_results = list(trending[:limit])
+    if trending_results:
+        return trending_results
+
+    # A new demo often has no paid bookings yet. Keep the homepage useful by
+    # falling back to all eligible upcoming catalogue movies, still excluding
+    # movies already booked by this user and never recommending past/inactive shows.
+    return list(eligible.order_by("-rating", "name", "pk")[:limit])

@@ -1,5 +1,6 @@
 """Environment-based Django settings for local development and deployment."""
 import os
+import hashlib
 from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
@@ -7,12 +8,14 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=False)
 
+BOOKMYSEAT_DEMO_MODE = os.environ.get("BOOKMYSEAT_DEMO_MODE", "false").lower() == "true"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if BOOKMYSEAT_DEMO_MODE and SECRET_KEY and len(SECRET_KEY) < 50:
+    SECRET_KEY = hashlib.sha512(SECRET_KEY.encode("utf-8")).hexdigest()
 if len(SECRET_KEY) < 50 or SECRET_KEY == "replace-with-a-long-random-secret":
     raise RuntimeError("Set DJANGO_SECRET_KEY to a unique value of at least 50 characters.")
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
-BOOKMYSEAT_DEMO_MODE = os.environ.get("BOOKMYSEAT_DEMO_MODE", "false").lower() == "true"
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()

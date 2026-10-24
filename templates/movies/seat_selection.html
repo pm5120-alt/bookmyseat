@@ -1,0 +1,130 @@
+{% extends "users/basic.html" %}{% block content %}
+<main class="container py-5" data-show="{{ show.id }}" data-availability="{% url 'seat_availability' show.id %}" data-reserve="{% url 'reserve_seats' show.id %}" data-payment-order-template="{% url 'create_payment_order' '00000000-0000-0000-0000-000000000000' %}" data-payment-verify-template="{% url 'verify_payment' 123456789 %}" data-profile-url="{% url 'profile' %}">
+  <h1>{{ show.movie.name }} — {{ show.theater.name }}</h1><p>{{ show.screen.name }} · {{ show.starts_at }} · ₹{{ show.price }} per seat</p>
+  <div aria-live="polite" id="seat-status">Loading availability…</div>
+  <form id="reservation-form" method="post" action="{% url 'reserve_seats' show.id %}">{% csrf_token %}
+    <fieldset><legend>Choose up to 10 seats</legend><div class="seat-grid">
+    {% for seat in seats %}<label class="seat" data-seat-id="{{ seat.id }}"><input type="checkbox" name="seats" value="{{ seat.id }}"><span>{{ seat.seat_number }}</span><small class="seat-state">Checking…</small></label>{% empty %}<p>No seats are configured for this screen.</p>{% endfor %}
+    </div></fieldset><button type="submit">Reserve seats for 2 minutes</button>
+  </form><p>Available, temporarily reserved, your selection, and booked status are labeled in text.</p>
+</main>
+<script src="https://checkout.razorpay.com/v1/checkout.js" async></script>
+<style>.seat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:.5rem;margin:1rem 0}.seat{border:1px solid #777;border-radius:6px;padding:.55rem;text-align:center}.seat input{display:block;margin:0 auto .3rem}.seat[data-status="available"]{background:#e6f5eb}.seat[data-status="held"]{background:#fff3cd}.seat[data-status="booked"]{background:#eee;color:#555}.seat[data-mine="true"]{outline:3px solid #136f3a}.seat small{display:block}</style>
+<script>
+(() => {
+  const root = document.querySelector('[data-show]');
+  const form = document.getElementById('reservation-form');
+  const status = document.getElementById('seat-status');
+  if (!root || !form || !status) return;
+
+  let requestSequence = 0;
+  let availabilityRequest = null;
+
+  async function refresh() {
+    if (document.hidden) return;
+    if (availabilityRequest) availabilityRequest.abort();
+    availabilityRequest = new AbortController();
+    const sequence = ++requestSequence;
+    try {
+      const response = await fetch(root.dataset.availability, {
+        signal: availabilityRequest.signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error('Availability could not be refreshed.');
+      const data = await response.json();
+      if (sequence !== requestSequence) return;
+      for (const seat of data.seats) {
+        const item = document.querySelector(`[data-seat-id="${seat.seat_id}"]`);
+        if (!item) continue;
+        const checkbox = item.querySelector('input');
+        const label = item.querySelector('.seat-state');
+        item.dataset.status = seat.status;
+        item.dataset.mine = String(seat.mine);
+        label.textContent = seat.mine
+          ? 'Your temporary reservation'
+          : seat.status === 'held' ? 'Reserved'
+          : seat.status === 'booked' ? 'Booked' : 'Available';
+        checkbox.disabled = seat.status === 'booked' || (seat.status === 'held' && !seat.mine);
+        if (checkbox.disabled) checkbox.checked = false;
+      }
+      // Keep booking/checkout feedback visible while background polling updates seats.
+      if (/^(Loading availability|Availability updated|Availability could not be refreshed)/.test(status.textContent)) {
+        status.textContent = 'Availability updated.';
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        status.textContent = 'Availability could not be refreshed. Your current selections are unchanged.';
+      }
+    }
+  }
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    status.textContent = 'Reserving seats…';
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Reservation failed.');
+      form.dataset.booking = data.booking;
+      status.textContent = `Reserved until ${new Date(data.expires_at).toLocaleTimeString()}. Creating secure payment order…`;
+      const csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
+      const orderUrl = root.dataset.paymentOrderTemplate.replace(
+        '00000000-0000-0000-0000-000000000000', data.booking,
+      );
+      const orderResponse = await fetch(orderUrl, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const order = await orderResponse.json();
+      if (!orderResponse.ok) {
+        throw new Error(order.error || 'Payment order could not be created; your hold will expire automatically.');
+      }
+
+      let attempts = 0;
+      function launchCheckout() {
+        if (!window.Razorpay) {
+          if (attempts++ < 20) return setTimeout(launchCheckout, 250);
+          status.textContent = 'Checkout did not load. Your hold remains temporary; refresh to retry.';
+          return;
+        }
+        const checkout = new Razorpay({
+          key: order.key,
+          order_id: order.order_id,
+          amount: order.amount,
+          currency: order.currency,
+          name: 'BookMySeat',
+          description: 'Movie tickets',
+          handler: async result => {
+            const verifyUrl = root.dataset.paymentVerifyTemplate.replace('123456789', order.payment_id);
+            const verified = await fetch(verifyUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ ...result }),
+            });
+            const outcome = await verified.json();
+            status.textContent = verified.ok
+              ? 'Payment confirmed. Your tickets will be emailed after processing.'
+              : (outcome.error || 'Payment confirmation is pending.');
+            if (verified.ok) setTimeout(() => location.assign(root.dataset.profileUrl), 1200);
+          },
+          modal: { ondismiss: () => { status.textContent = 'Checkout closed. Your seat hold remains active until it expires.'; } },
+        });
+        checkout.open();
+      }
+      launchCheckout();
+      await refresh();
+    } catch (error) {
+      status.textContent = error.message;
+      await refresh();
+    }
+  });
+
+  document.addEventListener('visibilitychange', refresh);
+  refresh();
+  setInterval(refresh, 4000);
+})();
+</script>{% endblock %}

@@ -1,0 +1,119 @@
+{% extends "users/basic.html" %}
+{% block content %}
+<main class="container py-5">
+  <h1>Movies</h1>
+  <form id="movie-filter-form" method="get" action="{% url 'movie_list' %}" aria-controls="movie-results">
+    <label>Search <input name="search" value="{{ request.GET.search }}"></label>
+    <label>Genres (select any that match)
+      <select name="genre" multiple size="4" aria-label="Genres">
+        {% for genre in genres %}<option value="{{ genre.id }}" {% if genre.id|stringformat:'s' in selected_genres %}selected{% endif %}>{{ genre.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Languages (select any that match)
+      <select name="language" multiple size="4" aria-label="Languages">
+        {% for language in languages %}<option value="{{ language.id }}" {% if language.id|stringformat:'s' in selected_languages %}selected{% endif %}>{{ language.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>City <select name="city"><option value="">All</option>{% for city in cities %}<option value="{{ city.slug }}" {% if request.GET.city == city.slug %}selected{% endif %}>{{ city.name }}</option>{% endfor %}</select></label>
+    <label>Theater <select name="theater"><option value="">All</option>{% for theater in theaters %}<option value="{{ theater.id }}" {% if request.GET.theater == theater.id|stringformat:'s' %}selected{% endif %}>{{ theater.name }}</option>{% endfor %}</select></label>
+    <label>Released from <input type="date" name="release_from" value="{{ request.GET.release_from }}"></label>
+    <label>Released to <input type="date" name="release_to" value="{{ request.GET.release_to }}"></label>
+    <label>Minimum rating <input type="number" name="min_rating" min="0" max="5" step="0.1" value="{{ request.GET.min_rating }}"></label>
+    <label>Show date <input type="date" name="show_date" value="{{ request.GET.show_date }}"></label>
+    <label>Show from <input type="time" name="show_time_from" value="{{ selected_show_time_from }}"></label>
+    <label>Show to <input type="time" name="show_time_to" value="{{ selected_show_time_to }}"></label>
+    <label>Sort <select name="sort">
+      <option value="name" {% if request.GET.sort == 'name' or not request.GET.sort %}selected{% endif %}>Title</option>
+      <option value="rating" {% if request.GET.sort == 'rating' %}selected{% endif %}>Rating</option>
+      <option value="release" {% if request.GET.sort == 'release' %}selected{% endif %}>Newest release</option>
+      <option value="popular" {% if request.GET.sort == 'popular' %}selected{% endif %}>Popularity</option>
+      <option value="price" {% if request.GET.sort == 'price' or request.GET.sort == 'price_asc' %}selected{% endif %}>Price: low to high</option>
+      <option value="price_desc" {% if request.GET.sort == 'price_desc' %}selected{% endif %}>Price: high to low</option>
+    </select></label>
+    <button type="submit">Find movies</button>
+  </form>
+  <p id="movie-result-status" role="status" aria-live="polite">{{ matching_count }} matching movies</p>
+  <div id="movie-results" aria-live="polite">
+    {% include "movies/_movie_list_results.html" %}
+  </div>
+</main>
+<script>
+(() => {
+  const form = document.getElementById("movie-filter-form");
+  const results = document.getElementById("movie-results");
+  const status = document.getElementById("movie-result-status");
+  if (!form || !results || !status || !window.fetch || !window.history) return;
+
+  let debounceTimer;
+  let activeRequest;
+
+  function filteredUrl() {
+    const url = new URL(form.action, window.location.href);
+    const params = new URLSearchParams(new FormData(form));
+    params.delete("page");
+    url.search = params.toString();
+    return url;
+  }
+
+  function setFormFromUrl(url) {
+    const params = new URL(url, window.location.href).searchParams;
+    for (const field of form.querySelectorAll("[name]")) {
+      if (field instanceof HTMLSelectElement && field.multiple) {
+        const values = params.getAll(field.name);
+        for (const option of field.options) option.selected = values.includes(option.value);
+      } else {
+        field.value = params.get(field.name) || "";
+      }
+    }
+  }
+
+  async function loadResults(url, addHistory = true) {
+    if (activeRequest) activeRequest.abort();
+    activeRequest = new AbortController();
+    status.textContent = "Loading movies…";
+    try {
+      const response = await fetch(url, {
+        headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json" },
+        signal: activeRequest.signal,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The filters could not be applied.");
+      results.innerHTML = data.html;
+      status.textContent = `${data.matching_count} matching movies`;
+      if (addHistory) window.history.pushState({ movieList: true }, "", url);
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      status.textContent = error.message || "Results could not be refreshed. Try again.";
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", () => loadResults(url, false), { once: true });
+      status.append(" ", retry);
+    }
+  }
+
+  function scheduleUpdate() {
+    window.clearTimeout(debounceTimer);
+    debounceTimer = window.setTimeout(() => loadResults(filteredUrl()), 300);
+  }
+
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    window.clearTimeout(debounceTimer);
+    loadResults(filteredUrl());
+  });
+  form.addEventListener("input", scheduleUpdate);
+  form.addEventListener("change", scheduleUpdate);
+  results.addEventListener("click", event => {
+    const link = event.target.closest("a[data-page-link]");
+    if (!link) return;
+    event.preventDefault();
+    loadResults(new URL(link.href, window.location.href));
+  });
+  window.addEventListener("popstate", () => {
+    setFormFromUrl(window.location.href);
+    loadResults(window.location.href, false);
+  });
+})();
+</script>
+{% endblock %}

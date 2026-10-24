@@ -1,0 +1,42 @@
+{% extends "users/basic.html" %}
+{% block content %}
+<main class="container py-4">
+  <h1>Booking analytics</h1>
+  <form method="get">
+    <label>From <input type="date" name="start" value="{{ start|date:'Y-m-d' }}"></label>
+    <label>To <input type="date" name="end" value="{{ end|date:'Y-m-d' }}"></label>
+    <button>Apply range</button>
+  </form>
+  <p>
+    <a href="{% url 'export_analytics_csv' %}?start={{ start|date:'Y-m-d' }}&amp;end={{ end|date:'Y-m-d' }}">Download every filtered dashboard report as CSV</a>
+    · <a href="{% url 'export_bookings' %}?start={{ start|date:'Y-m-d' }}&amp;end={{ end|date:'Y-m-d' }}">Download filtered booking-only CSV</a>
+  </p>
+  <p>Bookings: {{ summary.bookings }} · Paid bookings: {{ summary.paid_bookings }} · Gross revenue: ₹{{ summary.gross_revenue }} · Verified refunds: ₹{{ summary.refund_amount }} ({{ summary.refund_count }}) · Net revenue: ₹{{ summary.net_revenue }} · Cancellations: {{ summary.cancelled }} ({{ summary.cancellation_rate }}%)</p>
+  <h2>Revenue trends</h2>
+  {% for period_name, rows in trends.items %}
+    <h3>{{ period_name|title }}</h3>
+    <table><thead><tr><th>Period</th><th>Captured payments</th><th>Amount</th></tr></thead><tbody>
+      {% for row in rows %}<tr><td>{{ row.period }}</td><td>{{ row.payments }}</td><td>₹{{ row.amount }}</td></tr>
+      {% empty %}<tr><td colspan="3">No captured payments.</td></tr>{% endfor %}
+    </tbody></table>
+  {% endfor %}
+  <h2>Booking trends</h2>
+  <table><thead><tr><th>Date</th><th>Bookings</th><th>Cancelled or refunded</th></tr></thead><tbody>
+    {% for row in booking_trends %}<tr><td>{{ row.period }}</td><td>{{ row.bookings }}</td><td>{{ row.cancelled }}</td></tr>
+    {% empty %}<tr><td colspan="3">No bookings.</td></tr>{% endfor %}
+  </tbody></table>
+  <h2>Theater occupancy</h2>
+  <table><thead><tr><th>Theater</th><th>Booked seats</th><th>Capacity</th><th>Occupancy</th></tr></thead><tbody>
+    {% for row in occupancy %}<tr><td>{{ row.theater }}</td><td>{{ row.booked }}</td><td>{{ row.capacity }}</td><td>{{ row.percent }}%</td></tr>
+    {% empty %}<tr><td colspan="4">No scheduled shows.</td></tr>{% endfor %}
+  </tbody></table>
+  <h2>Top movies</h2>
+  <ol>{% for row in top_movies %}<li>{{ row.movie__name }} — {{ row.bookings }} paid bookings · ₹{{ row.revenue }}</li>{% empty %}<li>No data.</li>{% endfor %}</ol>
+  <h2>Top theaters</h2>
+  <ol>{% for row in top_theaters %}<li>{{ row.theater__name }} — {{ row.bookings }} paid bookings · ₹{{ row.revenue }}</li>{% empty %}<li>No data.</li>{% endfor %}</ol>
+  <h2>Peak booking hours</h2>
+  <ol>{% for row in peak_hours %}<li>{{ row.hour }}:00 — {{ row.bookings }} bookings</li>{% empty %}<li>No data.</li>{% endfor %}</ol>
+  <h2>User growth</h2>
+  <ul>{% for row in user_growth %}<li>{{ row.period }} — {{ row.users }} new users · {{ row.cumulative_users }} cumulative users</li>{% empty %}<li>No new users.</li>{% endfor %}</ul>
+</main>
+{% endblock %}

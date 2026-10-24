@@ -70,7 +70,7 @@ Compose config includes Postgres and Redis readiness checks plus web, worker and
 
 The embedded `docs/TEST_REPORT.md` records 109 SQLite tests passed for the packaged snapshot. A separate acceptance note records 110/110 for a subsequent audit; the count discrepancy has not yet been reconciled, and this execution environment could not re-run Django tests. Historical local evidence records the Django system check, migration-drift check, dependency check, Python compilation, and 8/8 isolated PostgreSQL concurrency tests as passing. The isolated PostgreSQL run is not evidence for concurrency on the live Render database.
 
-The Render demo URL recorded in the deployment notes is https://bookmyseat-demo-drmf.onrender.com/. Prior notes record basic route checks, but the current service status and hosted catalogue should be rechecked before relying on them: project documentation conflicts about whether the hosted catalogue was empty or populated.
+The Render demo is deployed at https://bookmyseat-demo-drmf.onrender.com/. On 2026-10-24, Render marked the deployment from commit `66aa0160d3ef04248107e812cf346955c9ba20cd` as live, and Render logs recorded HTTP 200 for `GET /` after launch. The full current catalogue and non-home routes were not independently rechecked in this pass; demo catalogue state can vary with the persisted database.
 
 **Not fully verified:** successful Razorpay payment/capture/webhook/refund, production database concurrency, real SMTP delivery, and a full Docker build/launch. A Test Mode order being created is not proof that payment completed. A local SMTP sink is not proof of delivery through a real email provider. Do not describe the six-task acceptance criteria as fully verified until the remaining external checks pass.
 

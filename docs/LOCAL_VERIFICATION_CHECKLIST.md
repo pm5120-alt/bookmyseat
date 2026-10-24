@@ -1,11 +1,11 @@
 # Local verification results and remaining checks
 
-## Executed on the final source — 2026-10-24 (one sandbox; raw outputs in `docs/evidence/final-audit-20261024-rerun/`)
+## Historical baseline executed on earlier source — 2026-10-24 (one sandbox; raw outputs in `docs/evidence/final-audit-20261024-rerun/`)
 
 | Check | Result |
 |---|---|
-| `python manage.py test --verbosity 1` on SQLite | **107 passed, 0 failed, 0 skipped** (`sqlite-full-suite-final.txt`) |
-| Same suite on PostgreSQL 16.15 (disposable cluster) | **107 run, 0 failed, 1 skipped** — the skip is the SQLite-only benchmark-refusal test (`postgres-full-suite-final.txt`) |
+| Historical `python manage.py test --verbosity 1` on SQLite | **107 passed, 0 failed, 0 skipped** (`sqlite-full-suite-final.txt`) |
+| Historical same suite on PostgreSQL 16.15 (disposable cluster) | **107 run, 0 failed, 1 skipped** — the skip is the SQLite-only benchmark-refusal test (`postgres-full-suite-final.txt`) |
 | `python manage.py test movies.postgres_concurrency_tests` (explicit run; not found by default discovery) | **8 passed, 0 failed, 0 skipped**, through `scripts/preflight_postgres_harness.py` (`postgres-concurrency-final.txt`) |
 | `python manage.py check`, `makemigrations --check --dry-run`, `pip check`, `compileall` | Passed (`static-checks.txt`) |
 | Inline template JavaScript, `node --check` (Node v22.22.2; Django tags replaced by `0` before parsing) | 5 blocks parsed |

@@ -58,7 +58,7 @@ Take a provider snapshot and test migrations on a restored staging copy before p
 
 Use `python manage.py check --deploy` with actual production configuration; migrate a staging database; and verify database, broker, worker, beat, email, payment webhook/refunds, static/media delivery, and health endpoints independently. `python manage.py benchmark_bookings --count 100000` writes synthetic rows and must only run against a disposable PostgreSQL database. It does not replace the separate 50-client overlapping-seat contention test.
 
-Historical final-source results (2026-10-24): SQLite 107 passed/0 failed/0 skipped; PostgreSQL 16.15 full suite 107 run/0 failed/1 skipped (SQLite-only refusal test); PostgreSQL concurrency module 8/8 passed; see `TEST_REPORT.md`. In this session, the SQLite suite (107), Django checks, migration check, dependency check, and compile check passed. The Render Blueprint in `render.yaml` is a prepared, un-deployed option; no Render services were created. Docker, provider checkout, real SMTP, and public deployment remain NOT VERIFIED.
+Historical final-source results (2026-10-24): SQLite 107 passed/0 failed/0 skipped; PostgreSQL 16.15 full suite 107 run/0 failed/1 skipped (SQLite-only refusal test); PostgreSQL concurrency module 8/8 passed; see `TEST_REPORT.md`. In an earlier session, the SQLite suite (107), Django checks, migration check, dependency check, and compile check passed. The Render Blueprint in `render.yaml` is a prepared, un-deployed option; no Render services were created. Docker, provider checkout, real SMTP, and public deployment remain NOT VERIFIED.
 
 ## Disposable PostgreSQL acceptance scripts
 

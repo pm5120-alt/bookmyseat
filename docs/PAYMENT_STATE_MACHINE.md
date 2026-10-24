@@ -1,6 +1,6 @@
 # Payment, refund, order-creation and lock-order rules
 
-Final source (2026-10-24): SQLite 107 passed/0 failed/0 skipped; PostgreSQL 16.15 full suite 107 run/0 failed/1 skipped (SQLite-only refusal test); PostgreSQL concurrency module 8/8 passed; see `TEST_REPORT.md`.
+Historical final-source baseline (2026-10-24): SQLite 107 passed/0 failed/0 skipped; PostgreSQL 16.15 full suite 107 run/0 failed/1 skipped (SQLite-only refusal test); PostgreSQL concurrency module 8/8 passed; see `TEST_REPORT.md`.
 
 ## Ticket query and refund worker lock order (2026-10-24)
 

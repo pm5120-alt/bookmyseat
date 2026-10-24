@@ -2,7 +2,11 @@
 
 Date: 2026-10-24. This report separates checks run in this session from historical evidence documented by an earlier audit. The project `.env`, local database, private tickets, and raw probe logs stay local and are not part of the submission ZIP.
 
-## Checks run in this session
+## Current acceptance audit (2026-10-24)
+
+Latest acceptance audit after the homepage placeholder cleanup used the project virtual environment. `\.venv\Scripts\python.exe manage.py test` passed 108 tests with 0 failures and 0 skips in 102.2 seconds. `manage.py check`, `makemigrations --check --dry-run`, `pip check`, and `compileall` passed on that source. The restarted local browser showed the dynamic sample movie, movie discovery, the no-match search state, selectable available seats, and an anonymous analytics denial (403); no reservation or payment was submitted. The database is SQLite with 1 movie, 1 show, 1 pending and 2 failed bookings, 1 created and 3 failed payments, and no reviews. Redis, Docker, and a configured disposable PostgreSQL database were unavailable. The focused homepage cleanup removed static Event/Premiere/Music cards and added a regression test. See local-only `audit-outputs/acceptance-audit-2026-10-24.txt` for the exact command/output summary.
+
+## Earlier checks recorded from the preceding 2026-10-24 audit
 
 | Check | Result |
 |---|---|
@@ -11,7 +15,7 @@ Date: 2026-10-24. This report separates checks run in this session from historic
 | `python -m pip check` | **Passed** — no broken requirements |
 | `python -m compileall -q bookmyseat movies users scripts` | **Passed** |
 | Render Blueprint YAML parse | **Passed** — valid YAML with 2 services and 1 database; it was not submitted to Render for account-side validation |
-| `python manage.py test` | **Passed before the final deployment-only `MEDIA_ROOT` environment-variable adjustment** — 107 tests, 0 failures, 0 skips (97.5 seconds) |
+| Earlier `python manage.py test` | **Historical baseline, passed before the final deployment-only `MEDIA_ROOT` environment-variable adjustment** — 107 tests, 0 failures, 0 skips (97.5 seconds) |
 | Targeted poster upload tests after the `MEDIA_ROOT` adjustment | **Passed** — 2 upload/admin tests; environment override resolved to the configured local path |
 | Razorpay configuration read by Django | Key ID present with Test Mode prefix; secret present; webhook secret blank. Values were not displayed. No payment was initiated in this run. |
 | GitHub repository / push | **Not performed** — no local Git repository or configured remote exists; no repository creation or push was done. |
@@ -23,7 +27,7 @@ The test run emits warnings because `staticfiles/` does not exist yet, plus erro
 
 Earlier project evidence records the following; the original raw logs remain local under `docs/evidence/` and are excluded from the release archive because they contain throwaway audit identifiers and operational test data:
 
-- SQLite suite: 107 passed; PostgreSQL 16.15 suite: 107 run, 1 expected SQLite-only skip; PostgreSQL concurrency module: 8/8 passed.
+- Historical SQLite suite: 107 passed; PostgreSQL 16.15 suite: 107 run, 1 expected SQLite-only skip; PostgreSQL concurrency module: 8/8 passed.
 - Earlier browser probes exercised home/discovery, search and filters, seat hold, admin permissions, booking history, review authorization, and pending-ticket access policy.
 - A previous real Razorpay Test Mode order returned HTTP 200 and opened provider Checkout, which displayed “No appropriate payment method found.” No payment was submitted. A prior browser run also occurred before local Test Mode credentials were loaded and received HTTP 503 from order creation; that response does not describe the current configuration.
 - A separate local Redis/Celery/SMTP-sink run recorded ticket generation and one delivery. It was not real SMTP provider delivery, and the enqueue was not through a real payment confirmation.

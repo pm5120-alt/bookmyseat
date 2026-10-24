@@ -2,6 +2,8 @@
 
 ## Current local verification — 2026-10-24
 
+Latest acceptance audit after the homepage placeholder cleanup: SQLite `manage.py test` 108 passed/0 failed/0 skipped; Django system check, migration drift check, pip dependency check and Python compile check passed. Browser smoke covered home, discovery/empty search, movie detail, available-seat selection, and unauthenticated analytics denial. Payment, confirmed-booking ticket delivery, Redis/Celery and real SMTP remain unverified; PostgreSQL concurrency results below are historical for this audit.
+
 Historical final-source evidence (2026-10-24): SQLite 107 passed/0 failed/0 skipped; PostgreSQL 16.15 full suite 107 run/0 failed/1 skipped (SQLite-only refusal test); PostgreSQL concurrency module 8/8 passed. In this session the full SQLite suite passed before the final deployment-only `MEDIA_ROOT` configuration adjustment, and two directly relevant poster upload tests plus Django checks passed after that change; see `TEST_REPORT.md`.
 
 The PostgreSQL-only module (8 tests) passed 8/8 on a disposable PostgreSQL 16.15 database against this source; it is not discovered by default and must be run explicitly.

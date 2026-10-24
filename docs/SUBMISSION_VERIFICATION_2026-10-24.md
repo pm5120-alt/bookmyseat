@@ -1,3 +1,7 @@
+> **Historical report — superseded on 25 October 2026.** The latest hosted Razorpay Checkout attempt displayed “No appropriate payment method found,” so the deployed end-to-end payment flow is not currently verified. For the current status, use [the latest submission verification report](SUBMISSION_VERIFICATION_2026-10-25.md). This file preserves the previous report's historical state and must not be treated as current proof that hosted payment checkout works.
+
+---
+
 # BookMySeat — Final Verification Report
 
 **Verification date:** 24 October 2026  

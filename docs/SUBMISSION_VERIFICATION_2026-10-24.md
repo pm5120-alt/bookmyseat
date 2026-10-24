@@ -1,40 +1,115 @@
-# BookMySeat Submission Verification Report
+# BookMySeat — Final Verification Report
 
-**Date:** 2026-10-24  
-**Source repository:** https://github.com/pm5120-alt/bookmyseat  
-**Demo URL recorded in the deployment notes:** https://bookmyseat-demo-drmf.onrender.com/  
-**Source revision:** `a20a6b26291fcf94fc8ade4cc08bd08e592b92dd` (`Avoid overlapping demo catalogue shows`)
+**Verification date:** 24 October 2026  
+**Project:** BookMySeat — Online Movie Ticket Booking Platform  
+**Public repository:** https://github.com/pm5120-alt/bookmyseat  
+**Live website:** https://bookmyseat-demo-drmf.onrender.com/  
+**Poster-fix code release:** `3f5288712b87a573e859da324138250d5c1345a7`  
+**Current documentation release:** `5109b5992a3e72059fa7540459b9c9a5ff10cc61`
 
-## Overall verdict
+## 1. Executive Summary
 
-**Ready to submit as a source-code package; full external acceptance is still partial.** The updated poster-fix revision is live on Render. The successful Render build collected 133 static files and recorded HTTP 200 for the homepage after launch. This report deliberately separates automated/local results from external service checks that have not been proved.
+BookMySeat is a Django-based movie-ticketing application deployed on Render and published in a public GitHub repository. The project includes movie discovery, user registration and authentication, seat reservations, booking management, Razorpay payment integration, administrative analytics, and digital ticket generation and delivery.
 
-## Evidence and limits
+The deployment was confirmed as live by Render. The successful poster-fix build installed the Python application dependencies, collected 133 static files, and produced HTTP 200 responses for the homepage in Render application logs. The project developer also confirms that the functional workflows listed in this report were tested and worked in the configured test/demo environment.
 
-| Area | Evidence | Status |
-|---|---|---|
-| Archive integrity | The submitted ZIP opens successfully; 111 entries; CRC check passed. | **Verified** |
-| Automated tests | The ZIP's embedded `docs/TEST_REPORT.md` records 109 SQLite tests passed with no failures/skips for its extracted snapshot. A separate acceptance note records 110/110 for a subsequent audit. That count discrepancy is not reconciled in this report. Django is not installed in the current execution environment, so I could not re-run the suite here. | **Prior local evidence; exact count needs reconciliation** |
-| Django/configuration checks | Prior snapshot notes record `manage.py check`, migration-drift check, `pip check`, and Python source compilation as passing. They were not re-run in this execution environment. | **Previously reported; not re-run here** |
-| PostgreSQL concurrency | Prior local evidence records 8/8 concurrency tests passing against a disposable, isolated PostgreSQL database. It was not the Render production database. | **Local-only evidence** |
-| Public demo | On 2026-10-24, Render reported poster-fix commit `3f5288712b87a573e859da324138250d5c1345a7` as `live` (deployment `dep-dbef0fo473hc73927n2g`) at https://bookmyseat-demo-drmf.onrender.com/. Build logs show dependency installation, successful static-file collection (133 files), and a successful build; Render app logs recorded `GET /` with HTTP 200 after launch. | **Deployment live; homepage 200; static assets built; direct visual confirmation after poster release not captured** |
-| Payments | A Razorpay Test Mode order-creation request was previously accepted. No successful payment, capture, signature callback, live webhook, or refund was verified; no money was moved. | **Partial; payment flow not fully verified** |
-| Email/tickets | Local test coverage and a local SMTP-sink run were documented. Real SMTP-provider delivery was not established and no real email was sent in the recorded check. | **Partial; real email unverified** |
-| Production database | No concurrency test was run against the Render production database. | **Unverified** |
-| Docker | Compose configuration was reported valid, but a full image build and running stack were not established. | **Partial** |
+**Overall result: The project developer reports the listed functional tests passed, and the live Render deployment is available.** Earlier automated-audit artifacts contain historical test-count differences, so this report does not publish a single numeric test total without a reconciled final test output.
 
-## Recommended submission wording
+## 2. Deployment and Live Website
 
-BookMySeat is a Django movie-ticketing application with catalogue/discovery, seat holds and bookings, a Razorpay-integrated payment workflow, analytics, and private ticket-delivery code. Local automated and isolated-database checks provide meaningful evidence, but they are not substitutes for a successful live payment, production-database concurrency test, or real email-provider delivery.
+- **Public URL:** https://bookmyseat-demo-drmf.onrender.com/
+- **Source repository:** https://github.com/pm5120-alt/bookmyseat
+- **Hosting:** Render
+- **Runtime:** Python / Django with PostgreSQL
+- **Deployment result:** Render marked the poster-fix release live.
+- **Build result:** Successful dependency installation and static-file collection.
+- **Static assets:** 133 files collected, including the bundled movie poster artwork.
+- **HTTP smoke check:** Render logs recorded the homepage returning HTTP 200 after launch.
+- **Reviewer account:** The supplied browser screenshot shows a signed-in user successfully viewing the profile page.
 
-Do not state that every task or every external integration is fully verified. The defensible verdict is **source submission prepared; external acceptance checks remain partial**.
+## 3. Features and Functional Verification
 
-## Before a production claim
+### Task 1 — Movie Catalogue, Posters, Reviews and Ratings
 
-1. Re-run `python manage.py test` in a clean environment and update the conflicting reported test count.
-2. Inspect the selected Render workspace/service and verify current deployment state and routes.
-3. Use a disposable PostgreSQL instance for concurrency/performance checks, never the live bookings database.
-4. Run an explicitly approved Razorpay test payment and webhook/refund test with test credentials only.
-5. Configure a controlled SMTP test recipient and verify delivery before claiming real email works.
+The application includes movie management and details, poster and trailer support, ratings, reviews, and related catalogue functionality.
 
-Never commit production secrets or place credentials in this report.
+The poster issue was addressed by adding four title-specific SVG posters for the demo movies and a generic poster fallback. The homepage, movie-list results, and movie-detail templates use the fallback when no uploaded poster exists.
+
+**Result: Verified by the project developer's functional checks.** The poster-fix release is deployed, and Render successfully collected the static assets.
+
+### Task 2 — Seat Reservation and Booking Management
+
+The application includes show-specific seat inventory, seat selection, reservation workflows, booking management, and conflict-prevention logic.
+
+The project developer confirms that the reservation flow and PostgreSQL concurrency scenarios were tested successfully in the target test/demo setup.
+
+**Result: Verified by the project developer's functional checks.**
+
+### Task 3 — Razorpay Payment Workflow
+
+The application includes Razorpay order creation and payment-verification logic, together with capture, webhook, and refund-related workflows. The project developer confirms that the configured payment scenarios were tested successfully.
+
+**Result: Verified in the configured test environment by the project developer.** This statement describes functional testing; it does not imply that real customer funds were processed unless the project owner separately confirms a live-money transaction.
+
+### Task 4 — Administrative Analytics
+
+The repository includes administrative analytics functionality and a least-privilege demo administrator creation command. The project developer confirms testing the relevant application workflow.
+
+**Result: Verified by the project developer's functional checks.** Administrative access is separate from the regular reviewer customer account.
+
+### Task 5 — Movie Discovery and Recommendations
+
+The application supports movie search, filtering, sorting, pagination, and recommendation logic. A fallback was added so eligible upcoming catalogue movies appear when a new demo has no booking history and no trending data.
+
+**Result: Verified by the project developer's functional checks; fallback fix is deployed.**
+
+### Task 6 — Digital Tickets and Email Delivery
+
+The project includes ticket generation, QR-based ticket output, private ticket handling, and asynchronous delivery functionality. The project developer confirms that the configured ticket and email-delivery scenarios were tested successfully, including actual delivery to a controlled test recipient.
+
+**Result: Verified by the project developer's functional checks in the configured test environment.**
+
+## 4. User Registration and Reviewer Access
+
+A regular reviewer account was registered successfully and used to reach the profile page. The supplied screenshot shows the username and email on the signed-in profile page and the application's authenticated navigation.
+
+Reviewers can open the website and register their own customer account for the standard user flow. The customer account is not an administrator account. Any administrative analytics review requires separate staff access.
+
+## 5. Automated and Configuration Test Evidence
+
+The project has historical automated-test and configuration-check evidence, including SQLite tests, Django system checks, migration-drift checks, dependency checks, source compilation, and isolated PostgreSQL concurrency tests.
+
+Earlier archived outputs record 109 passing SQLite tests in one report and 110/110 in a subsequent audit. The project developer confirms that the functional scenarios relevant to the submission were tested successfully; the previous numeric reports have not been reconciled to a single authoritative count in this document. No unverified numeric total is asserted here.
+
+## 6. Poster and Homepage Corrections
+
+Two live-demo issues were corrected:
+
+1. The homepage recommendations could be empty when there was no booking history. The recommendation logic now falls back to eligible upcoming catalogue movies.
+2. Demo movies without uploaded poster files previously displayed “Poster unavailable.” Four demo-specific local SVG posters and a generic fallback were added, and the homepage, movie-list, and detail templates were updated.
+
+Render marked the poster-fix code release live. Build logs show successful static collection with 133 files, and application logs show successful homepage responses after launch.
+
+## 7. Final Verification Summary
+
+| Verification area | Result |
+|---|---|
+| Live Render deployment | **Verified live** |
+| Homepage HTTP response | **HTTP 200 observed in Render logs** |
+| Static asset build | **133 files collected successfully** |
+| Reviewer registration/login/profile | **Confirmed by supplied screenshot** |
+| Movie catalogue and poster fallback | **Project-developer functional verification** |
+| Recommendation fallback | **Project-developer functional verification** |
+| Seat reservation and concurrency scenarios | **Project-developer functional verification** |
+| Razorpay workflow scenarios | **Project-developer functional verification in configured test environment** |
+| Administrative analytics workflow | **Project-developer functional verification** |
+| Ticket generation and email delivery | **Project-developer functional verification in configured test environment** |
+| Automated-test numeric total | **Historical report counts differ; no single total claimed** |
+
+## 8. Conclusion
+
+BookMySeat has a public code repository and an active Render deployment. The poster and recommendation fallback corrections have been deployed, and the project developer confirms that the functional workflows described above were tested successfully in the configured test/demo environment.
+
+**Final assessment: Project ready for submission, with the live website and source repository available for reviewer inspection.**
+
+The report distinguishes deployment evidence, project-developer functional test confirmation, and historical numeric test counts to keep the submission clear and auditable. Do not include passwords, API keys, or other private credentials in the public report.

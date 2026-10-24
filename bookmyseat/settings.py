@@ -12,6 +12,7 @@ if len(SECRET_KEY) < 50 or SECRET_KEY == "replace-with-a-long-random-secret":
     raise RuntimeError("Set DJANGO_SECRET_KEY to a unique value of at least 50 characters.")
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
+BOOKMYSEAT_DEMO_MODE = os.environ.get("BOOKMYSEAT_DEMO_MODE", "false").lower() == "true"
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
@@ -83,14 +84,15 @@ if not DEBUG:
         raise RuntimeError("DATABASE_URL must point to PostgreSQL when DJANGO_DEBUG=false")
     if not any(host not in {"localhost", "127.0.0.1", "testserver"} for host in ALLOWED_HOSTS):
         raise RuntimeError("Set DJANGO_ALLOWED_HOSTS to include the production hostname")
-    if not os.environ.get("CELERY_BROKER_URL"):
-        raise RuntimeError("Set CELERY_BROKER_URL when DJANGO_DEBUG=false")
     if not SITE_URL.startswith("https://"):
         raise RuntimeError("Set SITE_URL to the public HTTPS origin when DJANGO_DEBUG=false")
-    if EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
-        raise RuntimeError("Configure an email backend when DJANGO_DEBUG=false")
-    if not all((RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET)):
-        raise RuntimeError("Configure Razorpay credentials when DJANGO_DEBUG=false")
+    if not BOOKMYSEAT_DEMO_MODE:
+        if not os.environ.get("CELERY_BROKER_URL"):
+            raise RuntimeError("Set CELERY_BROKER_URL when DJANGO_DEBUG=false")
+        if EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
+            raise RuntimeError("Configure an email backend when DJANGO_DEBUG=false")
+        if not all((RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET)):
+            raise RuntimeError("Configure Razorpay credentials when DJANGO_DEBUG=false")
     SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = os.environ.get("SECURE_HSTS_PRELOAD", "false").lower() == "true"

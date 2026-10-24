@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: bookmyseat-demo
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      DJANGO_DEBUG=true python manage.py migrate --noinput &&
+      DJANGO_DEBUG=true python manage.py collectstatic --noinput
+    startCommand: gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT
+    healthCheckPath: /
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: SECURE_SSL_REDIRECT
+        value: "true"
+      - key: BOOKMYSEAT_DEMO_MODE
+        value: "true"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bookmyseat-demo-db
+          property: connectionString
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.locmem.EmailBackend
+      - key: CELERY_BROKER_URL
+        value: memory://
+      - key: CELERY_RESULT_BACKEND
+        value: cache+memory://
+
+databases:
+  - name: bookmyseat-demo-db
+    databaseName: bookmyseat_demo
+    user: bookmyseat_demo
+    region: singapore
+    plan: free
+    postgresMajorVersion: "16"
+    ipAllowList: []

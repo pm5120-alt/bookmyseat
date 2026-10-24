@@ -7,7 +7,7 @@
 
 ## Overall verdict
 
-**Ready to submit as a source-code package; full external acceptance is still partial.** The repository is public and the supplied archive has 111 entries with a successful ZIP CRC check. The connected Render service is currently deployed and its homepage returned HTTP 200 in Render logs after launch. This report deliberately separates automated/local results from external service checks that have not been proved.
+**Ready to submit as a source-code package; full external acceptance is still partial.** The updated poster-fix revision is live on Render. The successful Render build collected 133 static files and recorded HTTP 200 for the homepage after launch. This report deliberately separates automated/local results from external service checks that have not been proved.
 
 ## Evidence and limits
 
@@ -17,7 +17,7 @@
 | Automated tests | The ZIP's embedded `docs/TEST_REPORT.md` records 109 SQLite tests passed with no failures/skips for its extracted snapshot. A separate acceptance note records 110/110 for a subsequent audit. That count discrepancy is not reconciled in this report. Django is not installed in the current execution environment, so I could not re-run the suite here. | **Prior local evidence; exact count needs reconciliation** |
 | Django/configuration checks | Prior snapshot notes record `manage.py check`, migration-drift check, `pip check`, and Python source compilation as passing. They were not re-run in this execution environment. | **Previously reported; not re-run here** |
 | PostgreSQL concurrency | Prior local evidence records 8/8 concurrency tests passing against a disposable, isolated PostgreSQL database. It was not the Render production database. | **Local-only evidence** |
-| Public demo | On 2026-10-24, Render reported the release for commit `66aa0160d3ef04248107e812cf346955c9ba20cd` as `live` (deployment `dep-dbeeotjsp5es73c2rofg`) at https://bookmyseat-demo-drmf.onrender.com/. Render application logs recorded `GET /` with HTTP 200 immediately after launch. A direct external browser fetch was unavailable in this verification environment; non-home routes and the exact current catalogue contents were not independently rechecked in this pass. | **Deployment live; homepage 200 in Render logs; other routes/catalogue not fully reverified** |
+| Public demo | On 2026-10-24, Render reported poster-fix commit `3f5288712b87a573e859da324138250d5c1345a7` as `live` (deployment `dep-dbef0fo473hc73927n2g`) at https://bookmyseat-demo-drmf.onrender.com/. Build logs show dependency installation, successful static-file collection (133 files), and a successful build; Render app logs recorded `GET /` with HTTP 200 after launch. | **Deployment live; homepage 200; static assets built; direct visual confirmation after poster release not captured** |
 | Payments | A Razorpay Test Mode order-creation request was previously accepted. No successful payment, capture, signature callback, live webhook, or refund was verified; no money was moved. | **Partial; payment flow not fully verified** |
 | Email/tickets | Local test coverage and a local SMTP-sink run were documented. Real SMTP-provider delivery was not established and no real email was sent in the recorded check. | **Partial; real email unverified** |
 | Production database | No concurrency test was run against the Render production database. | **Unverified** |

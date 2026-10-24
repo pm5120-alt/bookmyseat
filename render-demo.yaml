@@ -6,8 +6,10 @@ services:
     plan: free
     buildCommand: >-
       pip install -r requirements.txt &&
-      DJANGO_DEBUG=true python manage.py migrate --noinput &&
-      DJANGO_DEBUG=true python manage.py collectstatic --noinput
+      export DJANGO_DEBUG=true &&
+      export DJANGO_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" &&
+      python manage.py migrate --noinput &&
+      python manage.py collectstatic --noinput
     startCommand: gunicorn bookmyseat.wsgi:application --bind 0.0.0.0:$PORT
     healthCheckPath: /
     envVars:

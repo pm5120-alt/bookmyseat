@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.templatetags.static import static
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -114,6 +115,20 @@ class Movie(models.Model):
             return self.image.url if self.image and self.image.storage.exists(self.image.name) else ""
         except (OSError, ValueError):
             return ""
+
+    @property
+    def display_poster_url(self):
+        """Return a real uploaded poster or a bundled fallback served by Django staticfiles."""
+        uploaded = self.poster_url
+        if uploaded:
+            return uploaded
+        demo_posters = {
+            "Demo: The Lantern Harbour": "posters/demo-the-lantern-harbour.svg",
+            "Demo: Monsoon Circuit": "posters/demo-monsoon-circuit.svg",
+            "Demo: Paper Moon Cafe": "posters/demo-paper-moon-cafe.svg",
+            "Demo: Signal Garden": "posters/demo-signal-garden.svg",
+        }
+        return static(demo_posters.get(self.name, "posters/poster-default.svg"))
 
     def save(self, *args, **kwargs):
         self.trailer_video_id = extract_youtube_video_id(self.trailer_video_id)

@@ -3,11 +3,7 @@
   {% for movie in movies %}
     <article class="col-md-4 mb-4" data-movie-id="{{ movie.pk }}">
       <div class="card h-100">
-        {% if movie.poster_url %}
-          <img src="{{ movie.poster_url }}" alt="Poster for {{ movie.name }}" class="card-img-top" style="height:300px;object-fit:cover">
-        {% else %}
-          <div class="card-img-top d-flex align-items-center justify-content-center" style="height:300px;background:#eee">Poster unavailable</div>
-        {% endif %}
+        <img src="{{ movie.display_poster_url }}" alt="Poster for {{ movie.name }}" class="card-img-top" width="200" height="300" loading="lazy" style="height:300px;object-fit:cover;background:#15192b">
         <div class="card-body">
           <h2 class="h5"><a href="{% url 'movie_detail' movie.id %}">{{ movie.name }}</a></h2>
           <p>★ {{ movie.rating|floatformat:1 }} · {{ movie.review_count }} reviews</p>

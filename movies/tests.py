@@ -394,6 +394,15 @@ class DomainTestCase(TestCase):
         last_page = self.client.get(reverse("profile"), {"page": "999"})
         self.assertEqual(last_page.context["page_obj"].number, 2)
 
+    def test_demo_movie_uses_curated_static_poster_without_upload(self):
+        demo = Movie.objects.create(name="Demo: Monsoon Circuit", duration_minutes=132)
+        self.assertEqual(demo.poster_url, "")
+        self.assertTrue(demo.display_poster_url.endswith("/static/posters/demo-monsoon-circuit.svg"))
+
+    def test_unknown_movie_uses_generic_static_poster_without_upload(self):
+        movie = Movie.objects.create(name="An Untitled Test Film")
+        self.assertTrue(movie.display_poster_url.endswith("/static/posters/poster-default.svg"))
+
     def test_movie_detail_renders_safe_trailer_and_missing_poster_fallback(self):
         self.movie.description = "<script>alert('x')</script>"
         self.movie.trailer_video_id = "abcdefghijk"
@@ -402,7 +411,8 @@ class DomainTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "https://www.youtube-nocookie.com/embed/abcdefghijk")
         self.assertContains(response, 'sandbox="allow-scripts allow-same-origin allow-presentation"')
-        self.assertContains(response, "Poster unavailable")
+        self.assertContains(response, "/static/posters/poster-default.svg")
+        self.assertNotContains(response, "Poster unavailable")
         self.assertContains(response, "&lt;script&gt;")
         self.assertNotContains(response, "<script>alert('x')</script>")
 

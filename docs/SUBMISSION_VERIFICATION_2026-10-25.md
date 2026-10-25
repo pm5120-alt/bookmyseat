@@ -12,9 +12,12 @@
 
 ## 1. Current overall status
 
-**The config-ID patch is now deployed and the live site is healthy. A checkout attempt before this patch still displayed “No appropriate payment method found”; payment remains unverified until a fresh post-deployment transaction is tested.**
+**Current state: the Razorpay config-ID change is deployed, but live checkout still shows “No appropriate payment method found.” Payment is not verified.**
 
-The key-pair environment update was deployed by Render in `dep-dbeoac8ae00c73dq24h0`. The owner then retried checkout and observed the same payment-method error. The optional `RAZORPAY_CONFIG_ID` patch is now committed and live in Render deployment `dep-dbeomedg1s2s739k2f90`. It reads a public `config_...` ID from the environment, validates its format, includes `checkout_config_id` in the order response only when valid, and passes that value into Standard Checkout. Focused mocked-provider tests were added; they were not run in this environment because Django is not installed and package downloads are blocked. The hosted payment flow now requires a fresh post-deployment test. The source repository and live demo remain available for inspection.
+The fresh Test Mode API key pair was saved to Render, then deployment `dep-dbeoac8ae00c73dq24h0` went Live. The optional `RAZORPAY_CONFIG_ID` patch is deployed in `dep-dbeomedg1s2s739k2f90`. The saved public configuration ID is stored in Render's environment, not hard-coded in source.
+
+Render logs from the user's post-patch attempt show seat reservation returning HTTP 201 and payment-order creation returning HTTP 200. The payment-order response was 171 bytes after the patch, versus 124 bytes before it; this is consistent with the optional `checkout_config_id` field being included. Nevertheless, the latest checkout screenshot still shows “No appropriate payment method found.” This shows the backend order path is responding, but it does not prove why Razorpay has no method to display.
+
 
 The codebase includes movie discovery, registration and authentication, show-specific seat inventory, seat reservation, booking management, Razorpay order/payment verification and webhook handling, admin analytics, and digital ticket generation/delivery. Those implemented code paths are not equivalent to proof that every external integration currently succeeds on the hosted demo.
 
@@ -40,12 +43,14 @@ The owner retried checkout after the new key-pair deployment was Live and again 
 
 ### Required follow-up before calling payments verified
 
-The Razorpay Dashboard screenshot shows the saved configuration as `config_Trhb8JAuyT6pgZ`. That public configuration ID is stored in Render's `RAZORPAY_CONFIG_ID` environment variable. The new application-code deployment is Live; this variable should now be available to the app.
+The Razorpay Dashboard screenshot shows saved configuration ID `config_Trhb8JAuyT6pgZ`. It is stored in Render's `RAZORPAY_CONFIG_ID` variable, and the application code that passes it to Standard Checkout is deployed.
 
-1. Retry seat reservation and checkout on the live site. Check the order-create response in the browser Network tab; it should contain `checkout_config_id` when configured.
-3. Confirm usable payment methods are enabled/available in the Razorpay Test Mode account. A display configuration controls what is shown but does not activate payment methods unavailable to the account.
-4. Confirm the key in the order response matches the API Key ID for the same Razorpay Test Mode account.
-5. Verify the webhook URL (`https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`) and ensure its secret matches Render's `RAZORPAY_WEBHOOK_SECRET`. Complete a successful simulated payment and confirm server-side verification, webhook processing and the final booking status before declaring payment fixed.
+1. In Razorpay Dashboard **Test Mode**, open **Account & Settings → Payment Methods** (not only Payment Configuration) and confirm at least one eligible method such as Cards, UPI or Netbanking is actually enabled/available. Razorpay documents that Payment Configuration changes display/customization but does not itself enable methods unavailable to the account. <https://github.com/razorpay/markdown-docs/blob/master/payments/dashboard/account-settings/payment-configuration.md>
+2. Verify that Render's `RAZORPAY_KEY_ID` exactly matches the Test Mode API Key ID in the same Razorpay account where `BookMySeat Test` and the configuration ID were created. Do not share the secret.
+3. In Chrome DevTools → Network, retry checkout and inspect the payment-order response. Confirm `checkout_config_id` is present. If comfortable, inspect Razorpay's checkout preferences/configuration request for an explicit error or an empty available-method list. Do not share cookies, Authorization headers, secrets or a full HAR file.
+4. If the error persists, contact Razorpay Support through the authenticated dashboard. Give them the timestamp, order ID and exact error through their secure support channel, and ask them to confirm Test Mode payment-method availability and whether the configuration ID belongs to the same account as the API key.
+5. Verify the webhook URL (`https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`) and matching secret separately. Payment is not verified until a simulated checkout completes and the application verifies the payment and final booking status.
+
 
 ## 4. Other feature areas
 

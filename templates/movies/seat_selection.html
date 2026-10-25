@@ -85,10 +85,28 @@
     try { status.focus({ preventScroll: true }); } catch (_) { status.focus(); }
   }
 
-  const TEST_MODE_HINT = 'Test Mode: no real money moves. Pay with a Razorpay test card ' +
-    '(Mastercard 5267 3181 8797 5449 or Visa 4386 2894 0766 0153, any future expiry, any CVV). ' +
-    'Use the test UPI ID success@razorpay (failure@razorpay simulates a failure) only if Checkout shows a UPI ID field. ' +
-    'Razorpay documents UPI QR/Intent as Live-Mode-only, so do not scan the QR with a real UPI app.';
+  const TEST_MODE_HINT = 'Test Mode: no real money moves and Razorpay simulates the payment. ' +
+    'Choose a supported test method actually offered by Checkout and follow its test success/failure flow. ' +
+    'On desktop web, UPI Intent app selection is not supported; Razorpay displays a QR code instead. ' +
+    'A Test Mode QR is not a real payment request and cannot be completed by scanning it with a normal UPI app. ' +
+    'Google Pay/PhonePe app selection is a mobile-web flow when UPI Intent is enabled for the account.';
+
+  
+  // Use Razorpay's native method and platform selection. A runtime display override can
+  // suppress account-configured flows (including mobile UPI Intent). A configured
+  // Dashboard Payment Configuration ID is passed through without rewriting methods.
+  function buildCheckoutOptions(order) {
+    const options = {
+      key: order.key,
+      order_id: order.order_id,
+      amount: order.amount,
+      currency: order.currency,
+      name: 'BookMySeat',
+      description: 'Movie tickets',
+    };
+    if (order.checkout_config_id) options.checkout_config_id = order.checkout_config_id;
+    return options;
+  }
 
   async function requestOrder() {
     const orderUrl = root.dataset.paymentOrderTemplate.replace(
@@ -180,40 +198,13 @@
       testHint.hidden = false;
     }
     const testMode = Boolean(order.test_mode);
-    // Ask Razorpay Standard Checkout for all commonly enabled methods in Test Mode.
-    // Runtime config cannot enable a method disabled at the account level.
-    const testCheckoutConfig = {
-      display: {
-        blocks: {
-          all_methods: {
-            name: 'All Payment Options',
-            instruments: [
-              { method: 'card' },
-              { method: 'upi' },
-              { method: 'wallet' },
-              { method: 'netbanking' },
-            ],
-          },
-        },
-        sequence: ['block.all_methods'],
-        preferences: { show_default_blocks: true },
-      },
-    };
     console.info('[BookMySeat] Opening Razorpay Checkout', {
       mode: testMode ? 'test' : 'live',
-      checkout_configuration: testMode ? 'runtime-test-methods' : (order.checkout_config_id || 'account-default'),
+      checkout_configuration: order.checkout_config_id || 'account-default',
     });
     try {
       const checkout = new Razorpay({
-        key: order.key,
-        order_id: order.order_id,
-        amount: order.amount,
-        currency: order.currency,
-        ...(testMode
-          ? { config: testCheckoutConfig }
-          : (order.checkout_config_id ? { checkout_config_id: order.checkout_config_id } : {})),
-        name: 'BookMySeat',
-        description: 'Movie tickets',
+        ...buildCheckoutOptions(order),
         handler: result => { verifyPayment(order, result); },
         modal: { ondismiss: () => {
           if (state.done || state.verifying) return;

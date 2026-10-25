@@ -21,22 +21,20 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 
 ## Checkout configuration and Test Mode payment methods
 
-In Test Mode, BookMySeat passes a runtime Checkout configuration requesting Card, UPI, Wallet and Netbanking blocks, and asks Razorpay to retain its default method blocks alongside that custom block. It intentionally does not pass the dashboard RAZORPAY_CONFIG_ID in Test Mode, because the configuration shown in screenshots was presenting a QR-only UPI block. Runtime configuration can request methods enabled on the Razorpay account; it cannot activate methods disabled for that account.
+BookMySeat does not pass a runtime `config.display` method override. It uses Razorpay Standard Checkout's native method/platform selection. If `RAZORPAY_CONFIG_ID` is configured, the public configuration ID is passed as `checkout_config_id`; otherwise the account's default Checkout configuration is used.
 
-For Live Mode, the optional public environment variable remains RAZORPAY_CONFIG_ID=config_XXXXXXXXXXXXXX. Leave it empty to use the account's default Checkout configuration. Surrounding quote characters are stripped; malformed IDs are ignored with a server warning.
+Payment methods that appear are limited by the Razorpay account's enabled methods and the selected Dashboard configuration. A code-level configuration cannot enable Cards, Wallets or bank issuers that Razorpay has not enabled. The current Dashboard screenshots show UPI and Netbanking settings, with no visible Cards option and no available bank list, so account-level Test Mode activation still requires Razorpay Support.
 
-In the Razorpay Dashboard with Test Mode ON:
-1. Open Account & Settings -> Payment Configuration and check which methods are actually enabled in Test Mode.
-2. Ensure Cards are enabled for the account. If Card still does not appear after this code change, the missing capability must be enabled/configured on the Razorpay side; browser code cannot enable an account-disabled method.
-3. Check Payment Capture settings. BookMySeat only confirms a booking after Razorpay reports the payment as captured.
-4. Use the supported test card flow in the official Test Mode documentation. The page displays the payment failure code, source, step, reason and provider payment reference after a failed Checkout attempt.
+Platform expectation:
+- Desktop web: Razorpay UPI Intent app selection is not supported; Checkout displays a QR code instead. A Test Mode QR must not be treated as a real payment request scanned with a production UPI app.
+- Mobile web (Android/iOS): Razorpay documents UPI Intent app selection for supported mobile-web flows when UPI Intent is enabled for the account. Test Mode simulation and Live Mode transactions are different; validate only through the documented sandbox methods.
+- Dashboard configuration preview: a success animation is only a preview simulation. It does not prove that the website's order creation, payment callback, server verification, and booking confirmation work end to end.
 
-Razorpay's current Standard Checkout docs describe a runtime config.display.blocks configuration for selecting instruments. The docs also note that UPI Collect is deprecated on desktop web from 28 February 2026 (with listed exceptions), so on this Windows desktop use Card in Test Mode rather than expecting a UPI-ID field. Do not scan the QR with a real UPI app and expect a sandbox test payment.
-
-The Dashboard configuration preview is only a UI preview. A green success animation there is not a provider transaction. A booking is confirmed only after Razorpay Test Mode records the payment and BookMySeat's backend verifies its signature and captured status.
+Never switch to Live Mode or use real payment details merely to validate the internship demo. For an end-to-end sandbox test, use a documented method offered by the actual Checkout, then confirm the payment appears in the Razorpay Test Mode transaction list and the BookMySeat backend confirms the booking only after signature/provider-status verification.
 
 References:
-- https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/configure-payment-methods/sample-code/
+- https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/configure-payment-methods/
+- https://razorpay.com/docs/payments/payment-methods/upi/upi-intent/
 - https://razorpay.com/docs/server-integration/python/test-app/
 ## Evidence to keep
 Screenshots of each Dashboard payment/webhook/refund entry, the web, worker and beat logs for the run, and the final `profile` page. Redact keys and signatures before sharing. Record the outcome of each row as PASS/FAIL in `docs/TEST_REPORT.md`; anything not run stays **NOT VERIFIED**.

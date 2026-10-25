@@ -1314,6 +1314,40 @@ class DomainTestCase(TestCase):
         self.assertIn(b"'=1+1", all_reports_body)
         self.assertIn(str(paid.reference).encode(), all_reports_body)
 
+
+    def _run_checkout_options_js(self, order):
+        import re, shutil, subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        self.client.force_login(self.user)
+        html = self.client.get(reverse("seat_selection", args=[self.show.id])).content.decode()
+        match = re.search(r"function buildCheckoutOptions\(order\) \{.*?\n  \}\n", html, re.S)
+        self.assertIsNotNone(match)
+        script = match.group(0) + "console.log(JSON.stringify(buildCheckoutOptions(%s)));" % json.dumps(order)
+        out = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True, timeout=20)
+        return json.loads(out.stdout)
+
+    def test_checkout_options_have_no_runtime_display_override(self):
+        base = {"key": "rzp_test_abc123", "order_id": "order_X", "amount": 25000, "currency": "INR"}
+        for test_mode in (True, False):
+            with self.subTest(test_mode=test_mode):
+                options = self._run_checkout_options_js({**base, "test_mode": test_mode})
+                self.assertEqual(options["order_id"], "order_X")
+                self.assertEqual(options["amount"], 25000)
+                self.assertNotIn("config", options)
+                self.assertNotIn("checkout_config_id", options)
+                self.assertNotIn("handler", options)
+
+    def test_checkout_options_pass_dashboard_config_id_in_every_mode(self):
+        base = {"key": "rzp_test_abc123", "order_id": "order_X", "amount": 25000, "currency": "INR",
+                "checkout_config_id": "config_Ts1NJnhIOTM0SO"}
+        for test_mode in (True, False):
+            with self.subTest(test_mode=test_mode):
+                options = self._run_checkout_options_js({**base, "test_mode": test_mode})
+                self.assertEqual(options["checkout_config_id"], "config_Ts1NJnhIOTM0SO")
+                self.assertNotIn("config", options)
+
     def test_pending_unpaid_reservation_can_be_cancelled_after_show_starts(self):
         self.client.force_login(self.user)
         reserved = self.client.post(
@@ -2498,11 +2532,13 @@ class DomainTestCase(TestCase):
         self.client.force_login(self.user)
         page = self.client.get(reverse("seat_selection", args=[self.show.id]))
         for needle in ("__rzpScriptFailed", 'id="retry-payment"', 'id="test-mode-hint"', "payment.failed",
-                       "ondismiss", "signature_invalid", "payment_not_captured", "success@razorpay",
+                       "ondismiss", "signature_invalid", "payment_not_captured",
                        "More than one active reservation exists for this show", "Your Bookings",
-                       "scrollIntoView", "reservationSubmitting", "runtime-test-methods",
-                       "testCheckoutConfig", "{ method: 'card' }", "show_default_blocks: true", "error.metadata?.payment_id"):
+                       "scrollIntoView", "reservationSubmitting", "buildCheckoutOptions",
+                       "error.metadata?.payment_id"):
             self.assertContains(page, needle)
+        for forbidden in ("runtime-test-methods", "testCheckoutConfig", "show_default_blocks", "all_methods", "success@razorpay"):
+            self.assertNotContains(page, forbidden)
         self.assertContains(page, "outcome.status === 'confirmed'")
 
 

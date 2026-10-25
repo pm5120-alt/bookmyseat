@@ -1,25 +1,28 @@
-# Razorpay Checkout diagnosis (Test Mode) - 2026-10-25
+# Razorpay Checkout diagnosis (Test Mode) — 2026-10-25
 
-Status labels: VERIFIED = checked by code inspection or local static checks; DOCUMENTED = stated in Razorpay's official docs; UNVERIFIED = requires the Dashboard or a live browser test.
+Status labels: VERIFIED = code inspection/local static checks; DOCUMENTED = official Razorpay documentation; UNVERIFIED = requires the Dashboard or an actual browser transaction.
 
 ## Root-cause assessment
 
-1. The payment-methods body is rendered inside Razorpay's hosted Checkout UI. BookMySeat cannot hide or populate that pane with page CSS. It supplies an optional Payment Configuration ID, but the set of visible methods is controlled by the account's enabled methods and the selected configuration.
-2. A configuration or default that hides UPI ID/Number while showing UPI QR can produce a QR-only presentation. This is a plausible explanation for the screenshot, but must be confirmed in the Razorpay Dashboard in Test Mode.
-3. A Test Mode QR should not be treated as a real UPI payment request. Razorpay documents UPI test IDs such as success@razorpay and failure@razorpay, while UPI Intent/QR is intended for Live Mode.
-4. A green animation in the Dashboard configuration preview is not a transaction. Only a provider-side Test Mode payment and successful BookMySeat backend verification can confirm a booking.
-5. Whether a configuration created in one mode is accepted in the other is not guaranteed by our code. Use the dashboard's default in Test Mode if the configured ID does not produce the expected methods.
-6. The browser handler has been hardened to handle verification/network failures, distinguish uncaptured payments from failures, and confirm only when the server explicitly returns status=confirmed. Checkout can be reopened while the existing seat hold remains valid.
+1. The Dashboard's green UPI app preview is a UI simulation, not proof that BookMySeat can complete a real provider-side test transaction.
+2. The deployed website had a runtime `config.display.blocks.all_methods` override. This took over method/flow selection instead of allowing Razorpay's account configuration and device capabilities to drive Checkout. The override has been removed.
+3. BookMySeat now uses Razorpay Standard Checkout's native options and passes `checkout_config_id` only when the backend returns a valid configured ID. The backend order creation and signature/provider-status verification remain in place.
+4. Razorpay documents that UPI Intent app selection is supported on mobile web (when enabled) but is not supported on desktop web. Desktop Checkout automatically displays a QR code instead. Therefore, seeing QR rather than Google Pay/PhonePe buttons on a Windows desktop is expected behavior, not a frontend bug.
+5. A Test Mode QR is not a normal live UPI payment request. Do not scan it with a real UPI app to simulate a successful sandbox payment.
+6. The current screenshots show UPI and Netbanking configuration sections, but no Card option and an empty bank list. Whether Cards/Netbanking are available in this account's Test Mode cannot be confirmed by code inspection and requires Razorpay Support/dashboard activation.
 
-## Changes in this fix
+## Changes in this patch
 
-- Normalize surrounding quotes from the optional public RAZORPAY_CONFIG_ID environment value.
-- Expose a display-only test_mode hint based on the public key prefix; no secret is sent to the browser.
-- Add machine-readable verification outcomes for missing credentials, invalid signatures, provider outage, mismatched payments, failed payments, and payments not yet captured.
-- Treat the browser callback as a hint only; HMAC and provider-side order/amount/currency/captured checks remain mandatory.
-- Add Test Mode guidance, Checkout load/open error handling, clearer failure messages and Retry payment while the seat hold is active.
-- Add regression tests and a manual Dashboard runbook.
+- Removed the runtime Checkout display override and added `buildCheckoutOptions(order)` to pass the order and an optional Dashboard configuration ID through to Razorpay.
+- Replaced the stale `success@razorpay` advice with accurate Test Mode and desktop/mobile guidance.
+- Added regression tests asserting that no runtime `config` override is passed, and that an optional `checkout_config_id` is passed consistently in Test and Live modes.
+- Updated the runbook to distinguish desktop UPI QR, mobile-web UPI Intent, the Dashboard preview, and real server-side payment verification.
+- No backend views, models, migrations, idempotency, or seat reservation rules are changed by this checkout-options patch.
 
 ## Safety preserved
 
-No fake success path, no Live Mode switch, no payment signature bypass, and no migration/model changes. This patch does not make a Test Mode QR payable by a real UPI app; verify using a documented sandbox method.
+No fake success path, no switch to Live Mode, no payment signature bypass, and no claim that Card or Netbanking has been enabled. The patch corrects the Checkout integration but cannot activate methods at Razorpay account level or make desktop web launch mobile UPI apps.
+
+## Validation status
+
+The uploaded source report states that 128 Django tests passed in the creator's environment. In the current environment, Python compilation, JavaScript syntax and ZIP integrity were checked; Django is not installed here, so the Django suite has not been independently rerun. A real browser/Android test and a Razorpay Test Mode transaction remain unverified.

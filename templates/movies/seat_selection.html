@@ -112,7 +112,20 @@
               : (outcome.error || 'Payment confirmation is pending.');
             if (verified.ok) setTimeout(() => location.assign(root.dataset.profileUrl), 1200);
           },
-          modal: { ondismiss: () => { status.textContent = 'Checkout closed. Your seat hold remains active until it expires.'; } },
+          modal: { ondismiss: () => {
+            const testMode = String(order.key || '').startsWith('rzp_test_');
+            status.textContent = testMode
+              ? 'Checkout closed. In Test Mode, a QR scanned with a real UPI app will not complete a payment. Use a supported test card, or enter success@razorpay if UPI ID entry is available. Your seat hold remains active until it expires.'
+              : 'Checkout closed. Your seat hold remains active until it expires.';
+          } },
+        });
+        checkout.on('payment.failed', failure => {
+          const reason = failure?.error?.description || 'Razorpay reported that the payment failed.';
+          const testMode = String(order.key || '').startsWith('rzp_test_');
+          const testingHint = testMode
+            ? ' In Test Mode, do not scan the QR with a real UPI app; use a supported test card or enter success@razorpay if UPI ID entry is available.'
+            : '';
+          status.textContent = `${reason}${testingHint} Your booking remains unconfirmed; retry only while your seat hold is valid.`;
         });
         checkout.open();
       }

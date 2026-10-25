@@ -19,6 +19,12 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 | 6 | Cancel a confirmed booking | Provider refund created; booking/payment end as `refunded` after the `refund.processed` webhook |
 | 7 | Tamper: edit the amount in the browser request | Server ignores it; order amount equals server-computed total |
 
+## Test Mode UPI QR limitation
+
+Razorpay's Standard Checkout testing guide states that Test Mode UPI testing uses the test VPAs `success@razorpay` and `failure@razorpay`; UPI Intent and QR payments are for Live Mode. Do **not** scan a Test Mode QR using Google Pay, PhonePe or another real UPI app and treat its failure as a BookMySeat code defect. For an end-to-end sandbox check, use a supported test card, or use the test VPA if the Checkout configuration offers UPI-ID entry. Verify the resulting payment in the Razorpay **Test Mode** dashboard and confirm BookMySeat only changes the booking to confirmed after backend verification.
+
+Reference: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/
+
 ## Evidence to keep
 Screenshots of each Dashboard payment/webhook/refund entry, the web, worker and beat logs for the run, and the final `profile` page. Redact keys and signatures before sharing. Record the outcome of each row as PASS/FAIL in `docs/TEST_REPORT.md`; anything not run stays **NOT VERIFIED**.
 

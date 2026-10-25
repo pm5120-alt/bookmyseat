@@ -444,14 +444,16 @@ _RAZORPAY_CONFIG_ID_RE = re.compile(r"^config_[A-Za-z0-9]{6,40}$")
 
 def _order_payload(payment):
     payload = {"key": settings.RAZORPAY_KEY_ID, "order_id": payment.provider_order_id, "amount": int(payment.amount * 100),
-               "currency": payment.currency, "payment_id": payment.id}
-    # Optional explicit configuration supported by Razorpay Standard Checkout.
-    # Only a validated public ID is sent to the browser; secrets are never included.
-    config_id = getattr(settings, "RAZORPAY_CONFIG_ID", "")
+               "currency": payment.currency, "payment_id": payment.id,
+               # Display-only hint so the page can show Test Mode guidance. Derived from the public key id.
+               "test_mode": str(settings.RAZORPAY_KEY_ID or "").startswith("rzp_test_")}
+    # Only a validated public configuration ID is sent to the browser; secrets are never included.
+    # Configurations can customize methods already enabled on the account; they cannot enable account-level methods.
+    config_id = str(getattr(settings, "RAZORPAY_CONFIG_ID", "") or "").strip()
     if config_id and _RAZORPAY_CONFIG_ID_RE.fullmatch(config_id):
         payload["checkout_config_id"] = config_id
     elif config_id:
-        logger.warning("RAZORPAY_CONFIG_ID is set but malformed; ignoring it.")
+        logger.warning("RAZORPAY_CONFIG_ID is set but malformed; ignoring it and using the account default.")
     return payload
 
 
@@ -561,25 +563,36 @@ def create_payment_order(request, booking_ref):
 @login_required
 @require_POST
 def verify_payment(request, payment_id):
+    """Verify the Checkout callback with HMAC and Razorpay's provider-side payment state."""
     payment = get_object_or_404(Payment.objects.select_related("booking"), id=payment_id, booking__user=request.user)
     data = request.POST
+    if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
+        return JsonResponse({"error": "Payment provider is not configured.", "status": "provider_not_configured"}, status=503)
+    provider_payment_id = data.get("razorpay_payment_id", "")
     signature = data.get("razorpay_signature", "")
-    message = f"{payment.provider_order_id}|{data.get('razorpay_payment_id', '')}".encode()
+    message = f"{payment.provider_order_id}|{provider_payment_id}".encode()
     expected = hmac.new(settings.RAZORPAY_KEY_SECRET.encode(), message, hashlib.sha256).hexdigest()
-    if not signature or not hmac.compare_digest(signature, expected) or data.get("razorpay_order_id") != payment.provider_order_id:
-        return JsonResponse({"error": "Payment verification failed."}, status=400)
+    if (not provider_payment_id or not signature or not hmac.compare_digest(signature, expected)
+            or data.get("razorpay_order_id") != payment.provider_order_id):
+        return JsonResponse({"error": "Payment verification failed.", "status": "signature_invalid"}, status=400)
     try:
         import razorpay
-        provider_payment = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)).payment.fetch(data.get("razorpay_payment_id", ""))
-        if (provider_payment.get("order_id") != payment.provider_order_id or
-                provider_payment.get("status") != "captured" or
-                int(provider_payment.get("amount", -1)) != int(payment.amount * 100) or
-                provider_payment.get("currency") != payment.currency):
-            return JsonResponse({"error": "Payment is not yet captured or does not match this booking."}, status=409)
+        provider_payment = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)).payment.fetch(provider_payment_id)
+        matches = (provider_payment.get("order_id") == payment.provider_order_id and
+                   int(provider_payment.get("amount", -1)) == int(payment.amount * 100) and
+                   provider_payment.get("currency") == payment.currency)
+        provider_status = provider_payment.get("status")
     except Exception:
         logger.exception("Razorpay payment lookup failed for payment %s", payment.pk)
-        return JsonResponse({"error": "Payment status could not be verified."}, status=502)
-    return _confirm_payment(payment, data.get("razorpay_payment_id", ""))
+        return JsonResponse({"error": "Payment status could not be verified.", "status": "verification_unavailable"}, status=502)
+    if not matches:
+        return JsonResponse({"error": "Payment does not match this booking.", "status": "payment_mismatch"}, status=409)
+    if provider_status == "failed":
+        return JsonResponse({"error": "Razorpay reports this payment as failed.", "status": "payment_failed"}, status=409)
+    if provider_status != "captured":
+        return JsonResponse({"error": "Payment is not captured yet.", "status": "payment_not_captured",
+                             "provider_status": str(provider_status)}, status=409)
+    return _confirm_payment(payment, provider_payment_id)
 
 
 def _lock_booking_then_payment(payment_id):

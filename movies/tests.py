@@ -2318,6 +2318,161 @@ class DomainTestCase(TestCase):
         self.assertFalse(Payment.objects.filter(booking=booking, status=Payment.CAPTURED).exists())
 
 
+    # ---- Razorpay Checkout diagnosis regressions (config id, verify outcomes, page wiring) ----
+
+    _CFG = "config_Ts1NJnhIOTM0SO"
+
+    def _order_json(self, booking):
+        with patch("razorpay.Client") as provider:
+            response = self.client.post(reverse("create_payment_order", args=[booking.reference]))
+            provider.assert_not_called()  # the existing created order is reused; no provider call
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_CONFIG_ID=_CFG)
+    def test_valid_checkout_config_id_is_passed_without_leaking_secrets(self):
+        booking, _ = self._reserved_booking_with_order("order-cfg")
+        payload = self._order_json(booking)
+        self.assertEqual(payload["checkout_config_id"], self._CFG)
+        self.assertTrue(payload["test_mode"])
+        self.assertNotIn("test-secret", json.dumps(payload))
+        self.assertEqual(set(payload) - {"checkout_config_id"},
+                         {"key", "order_id", "amount", "currency", "payment_id", "test_mode"})
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_CONFIG_ID="")
+    def test_no_config_id_falls_back_to_account_default(self):
+        booking, _ = self._reserved_booking_with_order("order-nocfg")
+        payload = self._order_json(booking)
+        self.assertNotIn("checkout_config_id", payload)
+
+    def test_malformed_config_ids_are_ignored_and_logged(self):
+        booking, _ = self._reserved_booking_with_order("order-badcfg")
+        for bad in ("config_", "config_<script>", "config_a b c d e f", "cfg_Ts1NJnhIOTM0SO", "config_" + "A" * 41,
+                    "https://evil.example/config_Ts1NJnhIOTM0SO"):
+            with self.subTest(bad=bad), override_settings(
+                    RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_CONFIG_ID=bad):
+                with self.assertLogs("movies.views", level="WARNING") as logs:
+                    payload = self._order_json(booking)
+                self.assertNotIn("checkout_config_id", payload)
+                self.assertTrue(any("malformed" in line for line in logs.output))
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_live_abc123", RAZORPAY_KEY_SECRET="live-secret", RAZORPAY_CONFIG_ID="")
+    def test_live_key_is_not_reported_as_test_mode(self):
+        booking, _ = self._reserved_booking_with_order("order-live")
+        self.assertFalse(self._order_json(booking)["test_mode"])
+
+    def _verify_post(self, payment, pay_id="pay_chk1", signature=None, order_id=None):
+        signature = signature if signature is not None else hmac.new(
+            b"test-secret", f"{payment.provider_order_id}|{pay_id}".encode(), hashlib.sha256).hexdigest()
+        return self.client.post(reverse("verify_payment", args=[payment.pk]), {
+            "razorpay_payment_id": pay_id, "razorpay_order_id": order_id or payment.provider_order_id,
+            "razorpay_signature": signature})
+
+    def _assert_unconfirmed(self, booking, payment):
+        booking.refresh_from_db(); payment.refresh_from_db(); self.show_seats[0].refresh_from_db()
+        self.assertEqual(booking.status, Booking.PENDING)
+        self.assertNotEqual(payment.status, Payment.CAPTURED)
+        self.assertEqual((self.show_seats[0].status, self.show_seats[0].active_booking_id), (ShowSeat.HELD, booking.pk))
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret")
+    def test_verify_rejects_bad_signature_without_provider_call_or_confirmation(self):
+        booking, payment = self._reserved_booking_with_order("order-v-sig")
+        with patch("razorpay.Client") as provider:
+            response = self._verify_post(payment, signature="0" * 64)
+            missing = self._verify_post(payment, signature="")
+            wrong_order = self._verify_post(payment, order_id="order-other")
+            provider.assert_not_called()
+        for result in (response, missing, wrong_order):
+            self.assertEqual(result.status_code, 400)
+            self.assertEqual(result.json()["status"], "signature_invalid")
+        self._assert_unconfirmed(booking, payment)
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret")
+    def test_verify_with_valid_signature_but_uncaptured_payment_never_confirms(self):
+        booking, payment = self._reserved_booking_with_order("order-v-uncaptured")
+        for provider_status, expected in (("authorized", "payment_not_captured"), ("created", "payment_not_captured"),
+                                          ("failed", "payment_failed")):
+            with self.subTest(provider_status=provider_status):
+                with patch("razorpay.Client") as client:
+                    client.return_value.payment.fetch.return_value = {
+                        "order_id": payment.provider_order_id, "status": provider_status, "amount": 25000, "currency": "INR"}
+                    response = self._verify_post(payment)
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.json()["status"], expected)
+                self._assert_unconfirmed(booking, payment)
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret")
+    def test_verify_rejects_amount_currency_or_order_mismatch(self):
+        booking, payment = self._reserved_booking_with_order("order-v-mismatch")
+        for field, value in (("amount", 100), ("currency", "USD"), ("order_id", "order_someone_else")):
+            with self.subTest(field=field):
+                provider_payment = {"order_id": payment.provider_order_id, "status": "captured", "amount": 25000, "currency": "INR"}
+                provider_payment[field] = value
+                with patch("razorpay.Client") as client:
+                    client.return_value.payment.fetch.return_value = provider_payment
+                    response = self._verify_post(payment)
+                self.assertEqual((response.status_code, response.json()["status"]), (409, "payment_mismatch"))
+                self._assert_unconfirmed(booking, payment)
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret")
+    def test_verify_provider_outage_does_not_confirm(self):
+        booking, payment = self._reserved_booking_with_order("order-v-outage")
+        with patch("razorpay.Client") as client:
+            client.return_value.payment.fetch.side_effect = OSError("provider unreachable")
+            response = self._verify_post(payment)
+        self.assertEqual((response.status_code, response.json()["status"]), (502, "verification_unavailable"))
+        self._assert_unconfirmed(booking, payment)
+
+    @override_settings(RAZORPAY_KEY_ID="", RAZORPAY_KEY_SECRET="")
+    def test_verify_refuses_to_run_without_provider_credentials(self):
+        booking, payment = self._reserved_booking_with_order("order-v-nocreds")
+        forged = hmac.new(b"", f"{payment.provider_order_id}|pay_forged".encode(), hashlib.sha256).hexdigest()
+        with patch("razorpay.Client") as client:
+            response = self._verify_post(payment, pay_id="pay_forged", signature=forged)
+            client.assert_not_called()
+        self.assertEqual((response.status_code, response.json()["status"]), (503, "provider_not_configured"))
+        self._assert_unconfirmed(booking, payment)
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret")
+    def test_verify_confirms_only_after_signature_and_provider_capture_and_is_idempotent(self):
+        booking, payment = self._reserved_booking_with_order("order-v-ok")
+        with patch("razorpay.Client") as client:
+            client.return_value.payment.fetch.return_value = {
+                "order_id": "order-v-ok", "status": "captured", "amount": 25000, "currency": "INR"}
+            first = self._verify_post(payment)
+            replay = self._verify_post(payment)
+        self.assertEqual((first.status_code, first.json()["status"]), (200, "confirmed"))
+        self.assertEqual((replay.status_code, replay.json()["status"]), (200, "confirmed"))
+        booking.refresh_from_db(); payment.refresh_from_db(); self.show_seats[0].refresh_from_db()
+        self.assertEqual((booking.status, payment.status, payment.transaction_id), (Booking.CONFIRMED, Payment.CAPTURED, "pay_chk1"))
+        self.assertEqual(self.show_seats[0].status, ShowSeat.BOOKED)
+        self.assertEqual(Payment.objects.filter(booking=booking, status=Payment.CAPTURED).count(), 1)
+
+    @override_settings(RAZORPAY_KEY_ID="rzp_test_abc123", RAZORPAY_KEY_SECRET="test-secret")
+    def test_failed_payment_event_releases_hold_and_never_confirms(self):
+        booking, payment = self._reserved_booking_with_order("order-v-failed-evt")
+        _process_payment_webhook({"event": "payment.failed", "payload": {"payment": {"entity": {
+            "order_id": "order-v-failed-evt", "id": "pay_declined", "status": "failed", "currency": "INR", "amount": 25000}}}})
+        booking.refresh_from_db(); payment.refresh_from_db(); self.show_seats[0].refresh_from_db()
+        self.assertEqual((booking.status, payment.status), (Booking.FAILED, Payment.FAILED))
+        self.assertEqual(self.show_seats[0].status, ShowSeat.AVAILABLE)
+        with patch("razorpay.Client") as client:
+            client.return_value.payment.fetch.return_value = {
+                "order_id": "order-v-failed-evt", "status": "failed", "amount": 25000, "currency": "INR"}
+            response = self._verify_post(payment, pay_id="pay_declined")
+        self.assertEqual(response.status_code, 409)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.FAILED)
+
+    def test_seat_page_wires_checkout_failure_retry_and_test_mode_feedback(self):
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("seat_selection", args=[self.show.id]))
+        for needle in ("__rzpScriptFailed", 'id="retry-payment"', 'id="test-mode-hint"', "payment.failed",
+                       "ondismiss", "signature_invalid", "payment_not_captured", "success@razorpay"):
+            self.assertContains(page, needle)
+        self.assertContains(page, "outcome.status === 'confirmed'")
+
+
 class SeedDemoCatalogueTests(TestCase):
     def test_requires_confirmation_and_is_idempotent_without_overwriting(self):
         from io import StringIO

@@ -2,13 +2,15 @@
 <main class="container py-5" data-show="{{ show.id }}" data-availability="{% url 'seat_availability' show.id %}" data-reserve="{% url 'reserve_seats' show.id %}" data-payment-order-template="{% url 'create_payment_order' '00000000-0000-0000-0000-000000000000' %}" data-payment-verify-template="{% url 'verify_payment' 123456789 %}" data-profile-url="{% url 'profile' %}">
   <h1>{{ show.movie.name }} — {{ show.theater.name }}</h1><p>{{ show.screen.name }} · {{ show.starts_at }} · ₹{{ show.price }} per seat</p>
   <div aria-live="polite" id="seat-status">Loading availability…</div>
+  <p id="test-mode-hint" hidden></p>
+  <button type="button" id="retry-payment" hidden>Retry payment</button>
   <form id="reservation-form" method="post" action="{% url 'reserve_seats' show.id %}">{% csrf_token %}
     <fieldset><legend>Choose up to 10 seats</legend><div class="seat-grid">
     {% for seat in seats %}<label class="seat" data-seat-id="{{ seat.id }}"><input type="checkbox" name="seats" value="{{ seat.id }}"><span>{{ seat.seat_number }}</span><small class="seat-state">Checking…</small></label>{% empty %}<p>No seats are configured for this screen.</p>{% endfor %}
     </div></fieldset><button type="submit">Reserve seats for 2 minutes</button>
   </form><p>Available, temporarily reserved, your selection, and booked status are labeled in text.</p>
 </main>
-<script src="https://checkout.razorpay.com/v1/checkout.js" async></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js" async onerror="window.__rzpScriptFailed = true"></script>
 <style>.seat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:.5rem;margin:1rem 0}.seat{border:1px solid #777;border-radius:6px;padding:.55rem;text-align:center}.seat input{display:block;margin:0 auto .3rem}.seat[data-status="available"]{background:#e6f5eb}.seat[data-status="held"]{background:#fff3cd}.seat[data-status="booked"]{background:#eee;color:#555}.seat[data-mine="true"]{outline:3px solid #136f3a}.seat small{display:block}</style>
 <script>
 (() => {
@@ -58,9 +60,162 @@
     }
   }
 
+  const retryButton = document.getElementById('retry-payment');
+  const testHint = document.getElementById('test-mode-hint');
+  const state = { booking: null, verifying: false, done: false };
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const csrfToken = () => form.querySelector('[name=csrfmiddlewaretoken]').value;
+  const setStatus = text => { status.textContent = text; };
+  const showRetry = () => { if (retryButton) retryButton.hidden = false; };
+  const hideRetry = () => { if (retryButton) retryButton.hidden = true; };
+
+  const TEST_MODE_HINT = 'Test Mode: no real money moves. Pay with a Razorpay test card ' +
+    '(Mastercard 5267 3181 8797 5449 or Visa 4386 2894 0766 0153, any future expiry, any CVV). ' +
+    'Use the test UPI ID success@razorpay (failure@razorpay simulates a failure) only if Checkout shows a UPI ID field. ' +
+    'Razorpay documents UPI QR/Intent as Live-Mode-only, so do not scan the QR with a real UPI app.';
+
+  async function requestOrder() {
+    const orderUrl = root.dataset.paymentOrderTemplate.replace(
+      '00000000-0000-0000-0000-000000000000', state.booking,
+    );
+    const response = await fetch(orderUrl, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrfToken(), 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    const order = (await response.json().catch(() => null)) || {};
+    if (!response.ok) {
+      throw new Error(order.error || 'Payment order could not be created; your hold will expire automatically.');
+    }
+    return order;
+  }
+
+  // The browser callback is only a hint. The server checks the signature and provider-side
+  // order, amount, currency and captured status before it confirms the booking.
+  async function verifyPayment(order, result) {
+    state.verifying = true;
+    setStatus('Payment submitted. Verifying it with the server…');
+    const verifyUrl = root.dataset.paymentVerifyTemplate.replace('123456789', order.payment_id);
+    const body = () => new URLSearchParams({
+      razorpay_payment_id: result?.razorpay_payment_id || '',
+      razorpay_order_id: result?.razorpay_order_id || '',
+      razorpay_signature: result?.razorpay_signature || '',
+    });
+    const maxAttempts = 6;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let response, outcome;
+      try {
+        response = await fetch(verifyUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrfToken(), 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body(),
+        });
+        outcome = (await response.json().catch(() => null)) || {};
+      } catch (networkError) {
+        setStatus('Could not reach the server to verify your payment. Your booking is NOT confirmed yet. ' +
+          'Open My bookings in a minute to see the result, and do not pay again until you have.');
+        state.verifying = false;
+        return;
+      }
+      if (response.ok && outcome.status === 'confirmed') {
+        state.done = true;
+        state.verifying = false;
+        setStatus('Payment verified and booking confirmed. Your tickets will be emailed after processing.');
+        setTimeout(() => location.assign(root.dataset.profileUrl), 1200);
+        return;
+      }
+      if (outcome.status === 'payment_not_captured' && attempt < maxAttempts) {
+        setStatus('Payment received. Waiting for Razorpay to capture it (' + attempt + '/' + (maxAttempts - 1) + ')…');
+        await sleep(2000);
+        continue;
+      }
+      const messages = {
+        signature_invalid: 'The payment signature could not be verified, so your booking was NOT confirmed. ' +
+          'Do not pay again; contact support with payment reference ' + (result?.razorpay_payment_id || 'n/a') + '.',
+        payment_not_captured: 'Razorpay has not captured this payment yet. Your booking is NOT confirmed yet; ' +
+          'check My bookings in a minute before attempting another payment.',
+        payment_failed: 'Razorpay reports this payment as failed. Your booking is NOT confirmed.',
+        payment_mismatch: 'The payment does not match this booking, so it was NOT confirmed. Contact support.',
+        verification_unavailable: 'Razorpay could not be reached to verify the payment. Your booking is NOT confirmed yet; ' +
+          'check My bookings shortly before trying again.',
+        provider_not_configured: 'The payment provider is not configured on the server. Your booking is NOT confirmed.',
+      };
+      setStatus(messages[outcome.status] || outcome.error || 'Payment confirmation is pending. Your booking is NOT confirmed yet.');
+      state.verifying = false;
+      if (outcome.status === 'payment_failed') showRetry();
+      return;
+    }
+    state.verifying = false;
+  }
+
+  function openCheckout(order, attempts = 0) {
+    if (window.__rzpScriptFailed || (!window.Razorpay && attempts >= 20)) {
+      setStatus('Razorpay Checkout could not be loaded (network, firewall or an ad blocker?). ' +
+        'No payment was taken and your booking is NOT confirmed. Your seat hold stays active until it expires; use Retry payment.');
+      showRetry();
+      return;
+    }
+    if (!window.Razorpay) {
+      setTimeout(() => openCheckout(order, attempts + 1), 250);
+      return;
+    }
+    hideRetry();
+    if (order.test_mode) {
+      testHint.textContent = TEST_MODE_HINT;
+      testHint.hidden = false;
+    }
+    // Diagnostic path (Test Mode only): ?rzp_default=1 compares the account default configuration.
+    const useConfig = order.checkout_config_id &&
+      !(order.test_mode && new URLSearchParams(location.search).get('rzp_default') === '1');
+    console.info('[BookMySeat] Opening Razorpay Checkout', {
+      mode: order.test_mode ? 'test' : 'live', checkout_config_id: useConfig ? order.checkout_config_id : null,
+    });
+    try {
+      const checkout = new Razorpay({
+        key: order.key,
+        order_id: order.order_id,
+        amount: order.amount,
+        currency: order.currency,
+        ...(useConfig ? { checkout_config_id: order.checkout_config_id } : {}),
+        name: 'BookMySeat',
+        description: 'Movie tickets',
+        handler: result => { verifyPayment(order, result); },
+        modal: { ondismiss: () => {
+          if (state.done || state.verifying) return;
+          setStatus('Checkout closed without a verified payment. Your booking is NOT confirmed. ' +
+            'Your seat hold stays active until it expires; use Retry payment to reopen Checkout.');
+          showRetry();
+        } },
+      });
+      checkout.on('payment.failed', failure => {
+        const reason = failure?.error?.description || 'Razorpay reported that the payment failed.';
+        setStatus(reason + ' Your booking is NOT confirmed. You can retry in Checkout while your seat hold is valid.');
+      });
+      checkout.open();
+    } catch (error) {
+      console.error('[BookMySeat] Razorpay Checkout failed to open', error);
+      setStatus('Razorpay Checkout failed to open. Your booking is NOT confirmed. Use Retry payment.');
+      showRetry();
+    }
+  }
+
+  retryButton?.addEventListener('click', async () => {
+    if (!state.booking || state.verifying || state.done) return;
+    hideRetry();
+    setStatus('Preparing payment…');
+    try {
+      const order = await requestOrder();
+      setStatus('Opening Razorpay Checkout…');
+      openCheckout(order);
+    } catch (error) {
+      setStatus(error.message);
+      if (error instanceof TypeError) showRetry();
+    }
+  });
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    status.textContent = 'Reserving seats…';
+    hideRetry();
+    setStatus('Reserving seats…');
     try {
       const response = await fetch(form.action, {
         method: 'POST',
@@ -70,69 +225,13 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Reservation failed.');
       form.dataset.booking = data.booking;
-      status.textContent = `Reserved until ${new Date(data.expires_at).toLocaleTimeString()}. Creating secure payment order…`;
-      const csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
-      const orderUrl = root.dataset.paymentOrderTemplate.replace(
-        '00000000-0000-0000-0000-000000000000', data.booking,
-      );
-      const orderResponse = await fetch(orderUrl, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest' },
-      });
-      const order = await orderResponse.json();
-      if (!orderResponse.ok) {
-        throw new Error(order.error || 'Payment order could not be created; your hold will expire automatically.');
-      }
-
-      let attempts = 0;
-      function launchCheckout() {
-        if (!window.Razorpay) {
-          if (attempts++ < 20) return setTimeout(launchCheckout, 250);
-          status.textContent = 'Checkout did not load. Your hold remains temporary; refresh to retry.';
-          return;
-        }
-        const checkout = new Razorpay({
-          key: order.key,
-          order_id: order.order_id,
-          amount: order.amount,
-          currency: order.currency,
-          ...(order.checkout_config_id ? { checkout_config_id: order.checkout_config_id } : {}),
-          name: 'BookMySeat',
-          description: 'Movie tickets',
-          handler: async result => {
-            const verifyUrl = root.dataset.paymentVerifyTemplate.replace('123456789', order.payment_id);
-            const verified = await fetch(verifyUrl, {
-              method: 'POST',
-              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ ...result }),
-            });
-            const outcome = await verified.json();
-            status.textContent = verified.ok
-              ? 'Payment confirmed. Your tickets will be emailed after processing.'
-              : (outcome.error || 'Payment confirmation is pending.');
-            if (verified.ok) setTimeout(() => location.assign(root.dataset.profileUrl), 1200);
-          },
-          modal: { ondismiss: () => {
-            const testMode = String(order.key || '').startsWith('rzp_test_');
-            status.textContent = testMode
-              ? 'Checkout closed. In Test Mode, a QR scanned with a real UPI app will not complete a payment. Use a supported test card, or enter success@razorpay if UPI ID entry is available. Your seat hold remains active until it expires.'
-              : 'Checkout closed. Your seat hold remains active until it expires.';
-          } },
-        });
-        checkout.on('payment.failed', failure => {
-          const reason = failure?.error?.description || 'Razorpay reported that the payment failed.';
-          const testMode = String(order.key || '').startsWith('rzp_test_');
-          const testingHint = testMode
-            ? ' In Test Mode, do not scan the QR with a real UPI app; use a supported test card or enter success@razorpay if UPI ID entry is available.'
-            : '';
-          status.textContent = `${reason}${testingHint} Your booking remains unconfirmed; retry only while your seat hold is valid.`;
-        });
-        checkout.open();
-      }
-      launchCheckout();
+      state.booking = data.booking;
+      setStatus('Reserved until ' + new Date(data.expires_at).toLocaleTimeString() + '. Creating secure payment order…');
+      const order = await requestOrder();
+      openCheckout(order);
       await refresh();
     } catch (error) {
-      status.textContent = error.message;
+      setStatus(error.message);
       await refresh();
     }
   });

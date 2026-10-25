@@ -13,15 +13,26 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 |---|---|---|
 | 1 | Hold 2 seats, pay with Razorpay's documented Test Mode success card | Payment `captured`, booking `confirmed`, seats `booked`, one ticket email, ticket downloadable from profile |
 | 2 | Watch the webhook delivery log in the Dashboard | 200 responses; replaying a delivery returns `duplicate` and changes nothing |
-| 3 | Hold seats, pay with Razorpay's documented Test Mode failure card | Payment `failed`, booking `failed`, seats released immediately |
-| 4 | Close Checkout without paying | Seats stay held until expiry (120 s), then are released by Beat; booking not confirmed |
+| 3 | Hold seats, pay with Razorpay's documented Test Mode failure card (or `failure@razorpay`) | Page says NOT confirmed; after the `payment.failed` webhook, payment/booking fail and seats release |
+| 4 | Close Checkout without paying | Page says NOT confirmed and shows Retry payment; seats stay held until expiry (120 s), then release |
 | 5 | Retry after a failure while the hold is valid | New payment attempt row; history shows both |
 | 6 | Cancel a confirmed booking | Provider refund created; booking/payment end as `refunded` after the `refund.processed` webhook |
 | 7 | Tamper: edit the amount in the browser request | Server ignores it; order amount equals server-computed total |
 
-## Test Mode UPI QR limitation
+## Checkout configuration and Test Mode UPI
 
-Razorpay's Standard Checkout testing guide states that Test Mode UPI testing uses the test VPAs `success@razorpay` and `failure@razorpay`; UPI Intent and QR payments are for Live Mode. Do **not** scan a Test Mode QR using Google Pay, PhonePe or another real UPI app and treat its failure as a BookMySeat code defect. For an end-to-end sandbox check, use a supported test card, or use the test VPA if the Checkout configuration offers UPI-ID entry. Verify the resulting payment in the Razorpay **Test Mode** dashboard and confirm BookMySeat only changes the booking to confirmed after backend verification.
+Environment variable (public value, optional): RAZORPAY_CONFIG_ID=config_XXXXXXXXXXXXXX. Leave it empty to use the account's default Checkout configuration. Surrounding quote characters are stripped; malformed IDs are ignored with a server warning. The setting is passed to Checkout as checkout_config_id.
+
+In the Razorpay Dashboard with Test Mode ON:
+1. Open Account & Settings -> Payment Configuration and identify the configuration marked Default.
+2. Ensure Cards and any intended methods are shown. Under UPI, show UPI ID/Number if you want the test VPA path. A configuration can show/hide methods, but cannot enable methods disabled for the account.
+3. Open Settings -> Payment Methods and verify Cards/UPI are enabled in Test Mode.
+4. Check Payment Capture settings. BookMySeat only confirms a booking after Razorpay reports the payment as captured.
+5. If the configured ID behaves differently from the account default, open the seat page with ?rzp_default=1 (Test Mode only) to compare. The browser console logs the mode and config ID; DevTools -> Network shows checkout_config_id in the create-order response.
+
+For Test Mode, use a supported test card, or use success@razorpay / failure@razorpay only if Checkout exposes UPI ID entry. Razorpay documents UPI Intent/QR as Live-Mode-only; do not scan the test QR with Google Pay or PhonePe and expect a real payment.
+
+The Dashboard configuration preview is only a UI preview. A green success animation there is not a provider transaction. A booking is confirmed only after Razorpay Test Mode records the payment and BookMySeat's backend verifies its signature and captured status.
 
 Reference: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/
 

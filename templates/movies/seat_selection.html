@@ -179,11 +179,29 @@
       testHint.textContent = TEST_MODE_HINT;
       testHint.hidden = false;
     }
-    // Diagnostic path (Test Mode only): ?rzp_default=1 compares the account default configuration.
-    const useConfig = order.checkout_config_id &&
-      !(order.test_mode && new URLSearchParams(location.search).get('rzp_default') === '1');
+    const testMode = Boolean(order.test_mode);
+    // Ask Razorpay Standard Checkout for all commonly enabled methods in Test Mode.
+    // Runtime config cannot enable a method disabled at the account level.
+    const testCheckoutConfig = {
+      display: {
+        blocks: {
+          all_methods: {
+            name: 'All Payment Options',
+            instruments: [
+              { method: 'card' },
+              { method: 'upi' },
+              { method: 'wallet' },
+              { method: 'netbanking' },
+            ],
+          },
+        },
+        sequence: ['block.all_methods'],
+        preferences: { show_default_blocks: false },
+      },
+    };
     console.info('[BookMySeat] Opening Razorpay Checkout', {
-      mode: order.test_mode ? 'test' : 'live', checkout_config_id: useConfig ? order.checkout_config_id : null,
+      mode: testMode ? 'test' : 'live',
+      checkout_configuration: testMode ? 'runtime-test-methods' : (order.checkout_config_id || 'account-default'),
     });
     try {
       const checkout = new Razorpay({
@@ -191,7 +209,9 @@
         order_id: order.order_id,
         amount: order.amount,
         currency: order.currency,
-        ...(useConfig ? { checkout_config_id: order.checkout_config_id } : {}),
+        ...(testMode
+          ? { config: testCheckoutConfig }
+          : (order.checkout_config_id ? { checkout_config_id: order.checkout_config_id } : {})),
         name: 'BookMySeat',
         description: 'Movie tickets',
         handler: result => { verifyPayment(order, result); },
@@ -203,8 +223,25 @@
         } },
       });
       checkout.on('payment.failed', failure => {
-        const reason = failure?.error?.description || 'Razorpay reported that the payment failed.';
-        setStatus(reason + ' Your booking is NOT confirmed. You can retry in Checkout while your seat hold is valid.');
+        const error = failure?.error || {};
+        const details = [
+          error.code ? 'Code: ' + error.code : '',
+          error.source ? 'Source: ' + error.source : '',
+          error.step ? 'Step: ' + error.step : '',
+          error.reason ? 'Reason: ' + error.reason : '',
+          error.metadata?.payment_id ? 'Payment ID: ' + error.metadata.payment_id : '',
+        ].filter(Boolean).join(' · ');
+        const testHint = testMode
+          ? ' Test Mode tip: use Card with Razorpay test details if available; scanning the UPI QR with a real UPI app will not simulate a test payment.'
+          : '';
+        console.warn('[BookMySeat] Razorpay payment.failed', {
+          code: error.code, source: error.source, step: error.step,
+          reason: error.reason, payment_id: error.metadata?.payment_id,
+        });
+        setStatus('Razorpay reports that the payment failed. ' +
+          (error.description || '') + (details ? ' ' + details + '.' : '') +
+          testHint + ' Your booking is NOT confirmed. Check your booking status before attempting another payment.');
+        showRetry();
       });
       checkout.open();
     } catch (error) {

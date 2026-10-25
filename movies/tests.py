@@ -2500,7 +2500,8 @@ class DomainTestCase(TestCase):
         for needle in ("__rzpScriptFailed", 'id="retry-payment"', 'id="test-mode-hint"', "payment.failed",
                        "ondismiss", "signature_invalid", "payment_not_captured", "success@razorpay",
                        "More than one active reservation exists for this show", "Your Bookings",
-                       "scrollIntoView", "reservationSubmitting"):
+                       "scrollIntoView", "reservationSubmitting", "runtime-test-methods",
+                       "testCheckoutConfig", "{ method: 'card' }", "error.metadata?.payment_id"):
             self.assertContains(page, needle)
         self.assertContains(page, "outcome.status === 'confirmed'")
 

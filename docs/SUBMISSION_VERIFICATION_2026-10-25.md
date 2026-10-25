@@ -12,11 +12,11 @@
 
 ## 1. Current overall status
 
-**Current state: the Razorpay config-ID change is deployed, but live checkout still shows “No appropriate payment method found.” Payment is not verified.**
+**Current state: the config-ID patch is deployed, but both BookMySeat Standard Checkout and a Razorpay-hosted Test Mode Payment Link show “No appropriate payment method found.” Evidence now strongly points to Razorpay account/payment-method availability or activation configuration; root cause is not yet confirmed.**
 
 The fresh Test Mode API key pair was saved to Render, then deployment `dep-dbeoac8ae00c73dq24h0` went Live. The optional `RAZORPAY_CONFIG_ID` patch is deployed in `dep-dbeomedg1s2s739k2f90`. The saved public configuration ID is stored in Render's environment, not hard-coded in source.
 
-Render logs from the user's post-patch attempt show seat reservation returning HTTP 201 and payment-order creation returning HTTP 200. The payment-order response was 171 bytes after the patch, versus 124 bytes before it; this is consistent with the optional `checkout_config_id` field being included. Nevertheless, the latest checkout screenshot still shows “No appropriate payment method found.” This shows the backend order path is responding, but it does not prove why Razorpay has no method to display.
+Render logs from the user's post-patch attempt show seat reservation returning HTTP 201 and payment-order creation returning HTTP 200. The payment-order response was 171 bytes after the patch, versus 124 bytes before it; this is consistent with the optional `checkout_config_id` field being included. The user then reproduced the same error on a Razorpay-hosted Test Mode Payment Link outside BookMySeat, which makes a defect unique to the BookMySeat checkout code less likely. This is persuasive account/configuration-side evidence, but not definitive proof of the underlying cause. The user also reports that Razorpay Activation Details shows **Account Access: Limited**, the submitted website/app is **Under Review** with an expected 24–48-hour update, and the saved “BookMySeat Test” configuration lists only **Netbanking**. The user could not complete payment through Netbanking either, so bank availability/enabled status or another account/payment-method restriction still needs Razorpay support to confirm.
 
 
 The codebase includes movie discovery, registration and authentication, show-specific seat inventory, seat reservation, booking management, Razorpay order/payment verification and webhook handling, admin analytics, and digital ticket generation/delivery. Those implemented code paths are not equivalent to proof that every external integration currently succeeds on the hosted demo.
@@ -33,23 +33,38 @@ The codebase includes movie discovery, registration and authentication, show-spe
 
 ## 3. Latest payment checkout issue
 
-During the latest recorded attempt, Razorpay Checkout displayed:
+Both the hosted BookMySeat Standard Checkout and a Razorpay-hosted Test Mode Payment Link reproduce:
 
 > No appropriate payment method found
 
-A fresh CSV containing a Test Mode API key ID (with the `rzp_test_` prefix) and matching API secret was received on 25 October. The values were entered directly into the existing Render service as `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`; the raw credentials are deliberately omitted from this report. Render confirmed that the environment variables were updated and triggered deployment `dep-dbeoac8ae00c73dq24h0`. Render later reported that the key-pair deployment was Live, but the payment-method error persisted after that key update. The config-ID patch deployed later; the checkout has not yet been retested after that patch.
+This matters because the failure also occurs outside the Django application. BookMySeat's order endpoint returns HTTP 200, and the deployed config-ID patch sends the saved configuration ID through Checkout. These facts make an application-specific order-creation defect less likely, but the root cause remains unconfirmed.
 
-The owner retried checkout after the new key-pair deployment was Live and again saw **“No appropriate payment method found.”** The new API keys alone did not resolve the visible checkout failure. The existing `RAZORPAY_WEBHOOK_SECRET` was not changed in that environment update; it must match the secret configured for the Razorpay webhook. Do not assume the webhook or payment flow is verified until a new hosted test transaction completes.
+### Account observations reported by the project owner
 
-### Required follow-up before calling payments verified
+- Razorpay Dashboard is in **Test Mode**.
+- Saved Payment Configuration: **BookMySeat Test**, configuration ID `config_Trhb8JAuyT6pgZ`, marked Default.
+- The configuration shows only **Netbanking**; the custom-block selector also offers only Netbanking.
+- A Razorpay-hosted Payment Link with ID `plink_Ts1Evlzq2cWx8V` shows the same error when opened separately and in a fresh view.
+- Account Activation details show **Account Access: Limited**. The Dashboard's Websites & API Keys section shows the website/app URL **Under Review**, with an estimated 24–48-hour update reported by the owner.
+- The browser's Razorpay Key ID prefix matches the Test Mode key shown in the Dashboard. The actual secret values are deliberately not included here.
 
-The Razorpay Dashboard screenshot shows saved configuration ID `config_Trhb8JAuyT6pgZ`. It is stored in Render's `RAZORPAY_CONFIG_ID` variable, and the application code that passes it to Standard Checkout is deployed.
+Taken together, this evidence suggests an account-side availability or activation/configuration problem more strongly than a bug unique to BookMySeat. It is not yet confirmed whether limited access affects Test Mode checkout, whether Netbanking lacks usable enabled banks, or whether another restriction applies. Razorpay's integration guidance says some payment methods are available by default while others require an enablement request; use a method actually configured for the account. See the official [Razorpay Python test-integration guide](https://razorpay.com/docs/server-integration/python/test-app/) and [Payment Configuration documentation](https://razorpay.com/docs/payments/dashboard/account-settings/payment-configuration/).
 
-1. In Razorpay Dashboard **Test Mode**, open **Account & Settings → Payment Methods** (not only Payment Configuration) and confirm at least one eligible method such as Cards, UPI or Netbanking is actually enabled/available. Razorpay documents that Payment Configuration changes display/customization but does not itself enable methods unavailable to the account. <https://github.com/razorpay/markdown-docs/blob/master/payments/dashboard/account-settings/payment-configuration.md>
-2. Verify that Render's `RAZORPAY_KEY_ID` exactly matches the Test Mode API Key ID in the same Razorpay account where `BookMySeat Test` and the configuration ID were created. Do not share the secret.
-3. In Chrome DevTools → Network, retry checkout and inspect the payment-order response. Confirm `checkout_config_id` is present. If comfortable, inspect Razorpay's checkout preferences/configuration request for an explicit error or an empty available-method list. Do not share cookies, Authorization headers, secrets or a full HAR file.
-4. If the error persists, contact Razorpay Support through the authenticated dashboard. Give them the timestamp, order ID and exact error through their secure support channel, and ask them to confirm Test Mode payment-method availability and whether the configuration ID belongs to the same account as the API key.
-5. Verify the webhook URL (`https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`) and matching secret separately. Payment is not verified until a simulated checkout completes and the application verifies the payment and final booking status.
+The optional `RAZORPAY_CONFIG_ID` patch is deployed in Render deployment `dep-dbeomedg1s2s739k2f90`. Render logs from the user's post-patch retry show seat reservation returning HTTP 201 and payment-order creation returning HTTP 200. The response size changed from 124 bytes before the patch to 171 bytes after it, consistent with the config ID being included. The same checkout error nevertheless persists, so this patch was not sufficient to fix the issue.
+
+### Recommended next action
+
+Contact Razorpay Support through the authenticated Dashboard's Help & Support / support-ticket flow. Ask them to check Test Mode payment-method availability for the account and the named configuration, whether any banks are enabled under Netbanking, whether the configuration belongs to the same account as the current Test Mode API key, and whether the account's Limited access / pending website review affects this hosted Test Mode checkout. Include the payment link ID and config ID in the secure support ticket. Never include the API secret or webhook secret.
+
+Do not keep rotating API keys or changing application code while the provider-side issue is being investigated. The webhook secret is used after a payment; its mismatch would not explain this pre-payment-method error.
+
+### Status and acceptance gates
+
+- Application deployment and order creation: working based on Render status and HTTP 200 logs.
+- Standard Checkout payment methods: **blocked** — no appropriate method found.
+- Razorpay-hosted Payment Link: **same failure**.
+- Payment verification, capture, webhook handling, and final booking confirmation: **not demonstrated**.
+- Unit tests for the config-ID patch: added but not run in the available environment; no real hosted Test Mode payment has succeeded.
 
 
 ## 4. Other feature areas
@@ -84,7 +99,7 @@ No API-key, API-secret, webhook-secret, password, or other credential value is i
 
 ## 8. Final assessment
 
-**Current result: config-ID patch deployed and site healthy; post-patch hosted checkout and payment remain unverified pending a fresh Test Mode transaction.**
+**Current result: both BookMySeat checkout and a Razorpay-hosted Test Mode Payment Link fail with “No appropriate payment method found.” Account-side/payment-method configuration is the leading hypothesis; awaiting Razorpay support/website review. Payment remains unverified.**
 
 - **Public website:** https://bookmyseat-demo-drmf.onrender.com/
 - **Source repository:** https://github.com/pm5120-alt/bookmyseat

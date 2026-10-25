@@ -849,7 +849,7 @@ def desktop_demo_payment(request, booking_ref):
 
     with transaction.atomic():
         booking = get_object_or_404(
-            Booking.objects.select_for_update().select_related("show"),
+            Booking.objects.select_for_update(of=("self",)).select_related("show"),
             reference=booking_ref,
             user=request.user,
         )

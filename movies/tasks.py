@@ -76,7 +76,15 @@ def _render_pdf(booking, token):
     pdf.setFont("Helvetica-Bold", 20); pdf.drawString(20 * mm, height - 25 * mm, booking.movie.name)
     pdf.setFont("Helvetica", 11)
     venue = ", ".join(value for value in [booking.theater.name, booking.theater.city.name if booking.theater.city_id else "", booking.theater.address] if value)
-    rows = [f"Theater: {venue}", f"Screen: {booking.show.screen.name if booking.show_id else 'Legacy booking'}", f"Show: {timezone.localtime(booking.show.starts_at).strftime('%d %b %Y, %H:%M %Z') if booking.show_id else 'See booking history'}", f"Seats: {', '.join(x.show_seat.seat.seat_number for x in booking.booking_seats.select_related('show_seat__seat')) or (booking.seat.seat_number if booking.seat_id else 'N/A')}", f"Booking: {booking.reference}", f"Payment: {booking.payments.filter(status=Payment.CAPTURED).first().transaction_id if booking.payments.filter(status=Payment.CAPTURED).exists() else 'N/A'}", f"Amount: INR {booking.total_amount}"]
+    captured_payment = booking.payments.filter(status=Payment.CAPTURED).first()
+    simulated_payment = booking.payments.filter(status=Payment.SIMULATED).first()
+    if captured_payment:
+        payment_label = captured_payment.transaction_id or "Captured"
+    elif simulated_payment:
+        payment_label = "DEMO SIMULATED - NO MONEY MOVED"
+    else:
+        payment_label = "N/A"
+    rows = [f"Theater: {venue}", f"Screen: {booking.show.screen.name if booking.show_id else 'Legacy booking'}", f"Show: {timezone.localtime(booking.show.starts_at).strftime('%d %b %Y, %H:%M %Z') if booking.show_id else 'See booking history'}", f"Seats: {', '.join(x.show_seat.seat.seat_number for x in booking.booking_seats.select_related('show_seat__seat')) or (booking.seat.seat_number if booking.seat_id else 'N/A')}", f"Booking: {booking.reference}", f"Payment: {payment_label}", f"Amount: INR {booking.total_amount}"]
     y = height - 42 * mm
     for row in rows: pdf.drawString(20 * mm, y, row); y -= 9 * mm
     qr = qrcode.make(f"{settings.SITE_URL}/movies/tickets/verify/{token}/")

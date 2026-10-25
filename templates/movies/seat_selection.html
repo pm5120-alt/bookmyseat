@@ -1,9 +1,14 @@
 {% extends "users/basic.html" %}{% block content %}
-<main class="container py-5" data-show="{{ show.id }}" data-availability="{% url 'seat_availability' show.id %}" data-reserve="{% url 'reserve_seats' show.id %}" data-payment-order-template="{% url 'create_payment_order' '00000000-0000-0000-0000-000000000000' %}" data-payment-verify-template="{% url 'verify_payment' 123456789 %}" data-profile-url="{% url 'profile' %}">
+<main class="container py-5" data-show="{{ show.id }}" data-availability="{% url 'seat_availability' show.id %}" data-reserve="{% url 'reserve_seats' show.id %}" data-payment-order-template="{% url 'create_payment_order' '00000000-0000-0000-0000-000000000000' %}" data-payment-verify-template="{% url 'verify_payment' 123456789 %}" data-profile-url="{% url 'profile' %}" data-desktop-demo-enabled="{{ desktop_demo_payment_enabled|yesno:'true,false' }}" data-demo-payment-template="{% url 'desktop_demo_payment' '00000000-0000-0000-0000-000000000000' %}">
   <h1>{{ show.movie.name }} — {{ show.theater.name }}</h1><p>{{ show.screen.name }} · {{ show.starts_at }} · ₹{{ show.price }} per seat</p>
   <div aria-live="polite" id="seat-status">Loading availability…</div>
   <p id="test-mode-hint" hidden></p>
   <button type="button" id="retry-payment" hidden>Retry payment</button>
+  <section id="desktop-payment-actions" class="mt-3 p-3 border rounded" hidden aria-live="polite">
+    <p><strong>Desktop demo option:</strong> the simulated route confirms a DEMO booking and generates a ticket, but no money moves and no Razorpay payment is created.</p>
+    <button type="button" id="continue-razorpay">Continue with Razorpay Checkout</button>
+    <button type="button" id="desktop-demo-payment" class="btn btn-outline-secondary">Simulate desktop demo payment (no money moved)</button>
+  </section>
   <form id="reservation-form" method="post" action="{% url 'reserve_seats' show.id %}">{% csrf_token %}
     <fieldset><legend>Choose up to 10 seats</legend><div class="seat-grid">
     {% for seat in seats %}<label class="seat" data-seat-id="{{ seat.id }}"><input type="checkbox" name="seats" value="{{ seat.id }}"><span>{{ seat.seat_number }}</span><small class="seat-state">Checking…</small></label>{% empty %}<p>No seats are configured for this screen.</p>{% endfor %}
@@ -62,7 +67,13 @@
 
   const retryButton = document.getElementById('retry-payment');
   const testHint = document.getElementById('test-mode-hint');
-  const state = { booking: null, verifying: false, done: false };
+  const desktopPaymentActions = document.getElementById('desktop-payment-actions');
+  const continueRazorpayButton = document.getElementById('continue-razorpay');
+  const desktopDemoPaymentButton = document.getElementById('desktop-demo-payment');
+  const desktopDemoEnabled = root.dataset.desktopDemoEnabled === 'true';
+  const isDesktopBrowser = () => window.matchMedia('(min-width: 768px)').matches
+    && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const state = { booking: null, verifying: false, done: false, pendingOrder: null };
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const csrfToken = () => form.querySelector('[name=csrfmiddlewaretoken]').value;
   const setStatus = text => { status.textContent = text; };
@@ -263,6 +274,43 @@
     }
   }
 
+  continueRazorpayButton?.addEventListener('click', () => {
+    if (!state.pendingOrder || state.done || state.verifying) return;
+    desktopPaymentActions.hidden = true;
+    setStatus('Opening Razorpay Checkout…');
+    openCheckout(state.pendingOrder);
+  });
+
+  desktopDemoPaymentButton?.addEventListener('click', async () => {
+    if (!desktopDemoEnabled || !state.booking || state.done || state.verifying) return;
+    desktopDemoPaymentButton.disabled = true;
+    setStatus('Completing the labelled desktop demo simulation… No real money will move.');
+    const demoUrl = root.dataset.demoPaymentTemplate.replace(
+      '00000000-0000-0000-0000-000000000000', state.booking,
+    );
+    try {
+      const response = await fetch(demoUrl, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken(),
+          'X-Requested-With': 'XMLHttpRequest',
+          'Accept': 'application/json',
+        },
+      });
+      const outcome = (await response.json().catch(() => null)) || {};
+      if (!response.ok || outcome.status !== 'simulated') {
+        throw new Error(outcome.error || 'Demo payment simulation could not be completed.');
+      }
+      state.done = true;
+      desktopPaymentActions.hidden = true;
+      setStatus('DEMO CONFIRMED — NO MONEY MOVED. This is not a Razorpay transaction. Your demo ticket is being generated; opening Your Bookings…');
+      setTimeout(() => location.assign(root.dataset.profileUrl), 900);
+    } catch (error) {
+      setStatus(error.message || 'Demo payment simulation failed. No booking was confirmed.');
+      desktopDemoPaymentButton.disabled = false;
+    }
+  });
+
   retryButton?.addEventListener('click', async () => {
     if (!state.booking || state.verifying || state.done) return;
     hideRetry();
@@ -296,7 +344,14 @@
       state.booking = data.booking;
       setStatus('Reserved until ' + new Date(data.expires_at).toLocaleTimeString() + '. Creating secure payment order…');
       const order = await requestOrder();
-      openCheckout(order);
+      if (desktopDemoEnabled && order.test_mode && isDesktopBrowser()) {
+        state.pendingOrder = order;
+        desktopPaymentActions.hidden = false;
+        setStatus('Seats reserved until ' + new Date(data.expires_at).toLocaleTimeString() +
+          '. Choose Continue with Razorpay Checkout or the clearly labelled demo simulation. The demo option moves no money.');
+      } else {
+        openCheckout(order);
+      }
       await refresh();
     } catch (error) {
       showReservationError(error);

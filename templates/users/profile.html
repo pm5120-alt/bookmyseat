@@ -65,6 +65,7 @@
                         <i class="far fa-clock me-2 text-muted"> </i>  {{ booking.booked_at|date:"F d, Y H:i" }}<br>
                         Status: {{ booking.status|title }} · ₹{{ booking.total_amount }}
                         {% for payment in booking.payments.all %}<br>Payment: {{ payment.status|title }}{% if payment.transaction_id %} · Ref {{ payment.transaction_id }}{% endif %} · ₹{{ payment.amount }}{% if payment.refund_status != 'none' %} · Refund {{ payment.refund_status }}{% endif %}{% endfor %}
+                        {% for payment in booking.payments.all %}{% if payment.status == "simulated" %}<br><strong class="text-warning-emphasis">DEMO PAYMENT ONLY — no money moved and no Razorpay transaction was created.</strong>{% endif %}{% endfor %}
                       </p>
                       {% if booking.status == 'confirmed' %}<a class="btn btn-outline-primary" href="{% url 'ticket_download' booking.reference %}">Download ticket</a>{% endif %}
                       {% if booking.status == 'pending' %}<form method="post" action="{% url 'cancel_booking' booking.reference %}">{% csrf_token %}<button class="btn btn-outline-danger" type="submit">Cancel unpaid reservation</button></form>{% endif %}

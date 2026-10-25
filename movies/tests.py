@@ -2501,7 +2501,7 @@ class DomainTestCase(TestCase):
                        "ondismiss", "signature_invalid", "payment_not_captured", "success@razorpay",
                        "More than one active reservation exists for this show", "Your Bookings",
                        "scrollIntoView", "reservationSubmitting", "runtime-test-methods",
-                       "testCheckoutConfig", "{ method: 'card' }", "error.metadata?.payment_id"):
+                       "testCheckoutConfig", "{ method: 'card' }", "show_default_blocks: true", "error.metadata?.payment_id"):
             self.assertContains(page, needle)
         self.assertContains(page, "outcome.status === 'confirmed'")
 

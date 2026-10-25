@@ -21,7 +21,7 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 
 ## Checkout configuration and Test Mode payment methods
 
-In Test Mode, BookMySeat passes a runtime Checkout configuration requesting Card, UPI, Wallet and Netbanking blocks. It intentionally does not pass the dashboard RAZORPAY_CONFIG_ID in Test Mode, because the configuration shown in screenshots was presenting a QR-only UPI block. Runtime configuration can request methods enabled on the Razorpay account; it cannot activate methods disabled for that account.
+In Test Mode, BookMySeat passes a runtime Checkout configuration requesting Card, UPI, Wallet and Netbanking blocks, and asks Razorpay to retain its default method blocks alongside that custom block. It intentionally does not pass the dashboard RAZORPAY_CONFIG_ID in Test Mode, because the configuration shown in screenshots was presenting a QR-only UPI block. Runtime configuration can request methods enabled on the Razorpay account; it cannot activate methods disabled for that account.
 
 For Live Mode, the optional public environment variable remains RAZORPAY_CONFIG_ID=config_XXXXXXXXXXXXXX. Leave it empty to use the account's default Checkout configuration. Surrounding quote characters are stripped; malformed IDs are ignored with a server warning.
 

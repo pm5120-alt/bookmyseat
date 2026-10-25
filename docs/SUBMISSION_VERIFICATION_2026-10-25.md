@@ -39,13 +39,11 @@ The owner retried checkout after the new key-pair deployment was Live and again 
 
 ### Required follow-up before calling payments verified
 
-1. The API-key update is already deployed, so do not keep regenerating keys without a diagnosis.
-2. Check whether usable payment methods are actually available/enabled in Razorpay Test Mode; a display configuration controls what is shown but does not activate methods unavailable to the account.
-3. Review the optional config-ID patch, run the Django tests in an environment with dependencies installed, and only then decide whether to merge/deploy it.
-3. Confirm the Razorpay webhook URL is configured as `https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`, and that the configured webhook secret matches Render's `RAZORPAY_WEBHOOK_SECRET`.
-4. Retry a full test transaction and verify order creation, provider checkout, server-side payment verification, and webhook processing. Do not call the flow successful until the payment is confirmed by the application.
-5. Use only test credentials and simulated payments for the demo; do not process real customer payments.
-
+1. Review the optional config-ID patch and run the Django payment tests in an environment with dependencies installed before merging or deploying it.
+2. If the patch is deployed, add `RAZORPAY_CONFIG_ID` to Render using the exact public `config_...` ID copied from the saved “BookMySeat Test” configuration. This variable is not read by the current live code until the patch is deployed.
+3. Confirm that usable payment methods are actually available/enabled in Razorpay Test Mode. A display configuration controls what is shown but does not activate methods unavailable to the account.
+4. Retry checkout and inspect the browser Network tab. Confirm the order-create response includes the intended `checkout_config_id` and that the key ID matches the Test Mode key pair in the Dashboard.
+5. Verify the webhook URL (`https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`) and secret match, then complete a successful simulated payment, server-side verification, webhook processing, and booking confirmation before declaring payment fixed.
 ## 4. Other feature areas
 
 | Area | Current evidence / status |

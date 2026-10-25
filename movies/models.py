@@ -10,6 +10,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from .storage import private_ticket_storage
+from .demo_payments import desktop_demo_payments_enabled
 
 
 def validate_trailer(value):
@@ -270,8 +271,15 @@ class Booking(models.Model):
     def save(self, *args, **kwargs):
         if self.status == self.CONFIRMED:
             was_confirmed = self.pk and Booking.objects.filter(pk=self.pk, status=self.CONFIRMED).exists()
-            if not was_confirmed and (not self.pk or not self.payments.filter(status=Payment.CAPTURED, amount=self.total_amount).exists()):
-                raise ValidationError("A booking can only be confirmed after a captured payment matches its amount.")
+            captured_matches = bool(self.pk and self.payments.filter(status=Payment.CAPTURED, amount=self.total_amount).exists())
+            demo_matches = bool(
+                self.pk and desktop_demo_payments_enabled()
+                and self.payments.filter(status=Payment.SIMULATED, amount=self.total_amount).exists()
+            )
+            if not was_confirmed and not captured_matches and not demo_matches:
+                raise ValidationError(
+                    "A booking can only be confirmed after a matching captured payment or an explicitly enabled demo simulation."
+                )
         super().save(*args, **kwargs)
 
     def __str__(self): return f"Booking {self.reference} by {self.user}"
@@ -285,8 +293,8 @@ class BookingSeat(models.Model):
 
 
 class Payment(models.Model):
-    CREATED, AUTHORIZED, CAPTURED, FAILED, CANCELLED, REFUNDED = "created", "authorized", "captured", "failed", "cancelled", "refunded"
-    STATUS_CHOICES = [(v, v.title()) for v in (CREATED, AUTHORIZED, CAPTURED, FAILED, CANCELLED, REFUNDED)]
+    CREATED, AUTHORIZED, CAPTURED, FAILED, CANCELLED, REFUNDED, SIMULATED = "created", "authorized", "captured", "failed", "cancelled", "refunded", "simulated"
+    STATUS_CHOICES = [(v, v.title()) for v in (CREATED, AUTHORIZED, CAPTURED, FAILED, CANCELLED, REFUNDED, SIMULATED)]
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name="payments")
     provider_order_id = models.CharField(max_length=100, blank=True, db_index=True)
     transaction_id = models.CharField(max_length=100, blank=True, db_index=True)

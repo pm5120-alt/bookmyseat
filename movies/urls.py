@@ -10,6 +10,7 @@ urlpatterns = [
     path("shows/<int:show_id>/availability/", views.seat_availability, name="seat_availability"),
     path("bookings/<uuid:booking_ref>/seats/", views.modify_reservation, name="modify_reservation"),
     path("bookings/<uuid:booking_ref>/payment/order/", views.create_payment_order, name="create_payment_order"),
+    path("bookings/<uuid:booking_ref>/payment/desktop-demo/", views.desktop_demo_payment, name="desktop_demo_payment"),
     path("payments/<int:payment_id>/verify/", views.verify_payment, name="verify_payment"),
     path("payments/webhook/razorpay/", views.razorpay_webhook, name="razorpay_webhook"),
     path("bookings/<uuid:booking_ref>/ticket/", views.ticket_download, name="ticket_download"),

@@ -9,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=False)
 
 BOOKMYSEAT_DEMO_MODE = os.environ.get("BOOKMYSEAT_DEMO_MODE", "false").lower() == "true"
+BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED = os.environ.get("BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED", "false").lower() == "true"
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 if BOOKMYSEAT_DEMO_MODE and SECRET_KEY and len(SECRET_KEY) < 50:
     SECRET_KEY = hashlib.sha512(SECRET_KEY.encode("utf-8")).hexdigest()

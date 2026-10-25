@@ -19,10 +19,6 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 | 6 | Cancel a confirmed booking | Provider refund created; booking/payment end as `refunded` after the `refund.processed` webhook |
 | 7 | Tamper: edit the amount in the browser request | Server ignores it; order amount equals server-computed total |
 
-## Desktop demo simulation (explicitly not a Razorpay transaction)
-
-The optional Windows desktop fallback is gated by all three conditions: `BOOKMYSEAT_DEMO_MODE=true`, `BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED=true`, and a Test Mode key (`RAZORPAY_KEY_ID` starts with `rzp_test_`). It presents two choices after reservation and order creation: continue with Razorpay Checkout, or choose **Simulate desktop demo payment (no money moved)**. The simulation uses a distinct `simulated` payment status, never `captured`, writes a `demo_...` reference, confirms only a valid held reservation, and generates a PDF clearly marked `DEMO SIMULATED - NO MONEY MOVED`. Simulated payments are not counted as Razorpay captures/revenue and must never be presented as real payments. The environment flag is off by default and this path is unavailable when Live Mode keys are configured.
-
 ## Checkout configuration and Test Mode payment methods
 
 In Test Mode, BookMySeat restores the prior runtime `config.display` request for Card, UPI, Wallet and Netbanking and does not pass `checkout_config_id`, to avoid binding sandbox attempts to the Dashboard config ID while the regression is investigated. In Live Mode, the configured public `RAZORPAY_CONFIG_ID` is passed as `checkout_config_id`; otherwise the account default is used. The runtime list cannot enable a method the Razorpay account has not enabled.

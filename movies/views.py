@@ -27,7 +27,6 @@ from .models import (Booking, BookingSeat, City, Genre, Language, Movie, Payment
                      PaymentWebhookEvent, RecentlyViewedMovie, Review, ReviewReport, Seat, Show,
                      ShowSeat, Theater, eligible_viewer, show_is_bookable)
 from .recommendations import recommendations_for_user
-from .demo_payments import desktop_demo_payments_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +193,7 @@ def seat_selection(request, show_id):
         with transaction.atomic():
             for seat in seats:
                 ShowSeat.objects.get_or_create(show=show, seat=seat)
-    return render(request, "movies/seat_selection.html", {"show": show, "theater": show.theater, "seats": seats, "show_seats": show.show_seats.select_related("seat"), "desktop_demo_payment_enabled": desktop_demo_payments_enabled()})
+    return render(request, "movies/seat_selection.html", {"show": show, "theater": show.theater, "seats": seats, "show_seats": show.show_seats.select_related("seat")})
 
 
 @login_required
@@ -841,111 +840,6 @@ def _process_payment_webhook(data):
 
 
 @login_required
-@require_POST
-def desktop_demo_payment(request, booking_ref):
-    """Explicit desktop demo-only settlement; never creates a Razorpay capture."""
-    if not desktop_demo_payments_enabled():
-        return JsonResponse({"error": "Desktop demo payment is disabled."}, status=404)
-
-    with transaction.atomic():
-        booking = get_object_or_404(
-            Booking.objects.select_for_update(of=("self",)).select_related("show"),
-            reference=booking_ref,
-            user=request.user,
-        )
-        existing_demo = Payment.objects.filter(
-            booking=booking, status=Payment.SIMULATED, amount=booking.total_amount
-        ).first()
-        if booking.status == Booking.CONFIRMED and existing_demo:
-            return JsonResponse({
-                "status": "simulated", "booking": str(booking.reference),
-                "message": "This demo booking is already confirmed. No money was moved.",
-            })
-        if booking.status != Booking.PENDING:
-            return JsonResponse({"error": "This reservation is no longer pending. Refresh your bookings."}, status=409)
-
-        unresolved = _lock_unresolved_payment(booking)
-        if unresolved:
-            return _payment_resolution_conflict(unresolved, "complete a desktop demo payment")
-
-        if booking.payments.filter(status__in=[Payment.CAPTURED, Payment.AUTHORIZED, Payment.REFUNDED]).exists():
-            return JsonResponse({
-                "error": "A real provider payment exists or is unresolved. Check booking history before continuing."
-            }, status=409)
-
-        now = timezone.now()
-        if not booking.show_id or not show_is_bookable(booking.show, now):
-            _release_booking(booking, Booking.FAILED)
-            Payment.objects.filter(booking=booking, status=Payment.CREATED).update(status=Payment.FAILED)
-            return JsonResponse({"error": "The show has started or is no longer bookable. Select another show."}, status=409)
-
-        lines = list(
-            BookingSeat.objects.filter(booking=booking).select_related("show_seat").order_by("show_seat__seat_id")
-        )
-        rows = list(
-            ShowSeat.objects.select_for_update()
-            .filter(booking_seats__booking=booking)
-            .order_by("seat_id")
-        )
-        row_by_id = {row.pk: row for row in rows}
-        if not lines or len(lines) != len(rows) or any(line.show_seat_id not in row_by_id for line in lines):
-            return JsonResponse({"error": "The reservation has no valid seat selection. Refresh and try again."}, status=409)
-
-        for line in lines:
-            row = row_by_id[line.show_seat_id]
-            if not (
-                row.status == ShowSeat.HELD
-                and row.active_booking_id == booking.pk
-                and row.held_by_id == request.user.pk
-                and row.hold_expires_at
-                and row.hold_expires_at > now
-            ):
-                if row.status == ShowSeat.HELD and row.active_booking_id == booking.pk and row.hold_expires_at and row.hold_expires_at <= now:
-                    _release_booking(booking, Booking.FAILED)
-                    Payment.objects.filter(booking=booking, status=Payment.CREATED).update(status=Payment.FAILED)
-                return JsonResponse({"error": "Your seat hold expired or changed. Select the seats again."}, status=409)
-
-        line_total = booking.booking_seats.aggregate(total=Sum("price"))["total"] or Decimal("0.00")
-        if line_total != booking.total_amount or booking.total_amount <= Decimal("0.00"):
-            return JsonResponse({"error": "The reservation amount does not match its selected seats."}, status=409)
-
-        # The order created for the real Checkout path is no longer used by this
-        # explicit simulator. If it is paid later, late-capture/refund handling
-        # prevents it from silently reconfirming the booking.
-        Payment.objects.filter(booking=booking, status=Payment.CREATED).update(
-            status=Payment.CANCELLED, updated_at=now
-        )
-        demo_reference = "demo_" + uuid.uuid4().hex
-        Payment.objects.create(
-            booking=booking,
-            amount=booking.total_amount,
-            currency="INR",
-            status=Payment.SIMULATED,
-            transaction_id=demo_reference,
-            idempotency_key="desktop-demo-" + uuid.uuid4().hex,
-            order_state=Payment.ORDER_FAILED,
-        )
-
-        for line in lines:
-            row = row_by_id[line.show_seat_id]
-            row.status = ShowSeat.BOOKED
-            row.held_by = None
-            row.hold_expires_at = None
-            row.save(update_fields=["status", "held_by", "hold_expires_at"])
-
-        booking.status = Booking.CONFIRMED
-        booking.save(update_fields=["status"])
-        transaction.on_commit(lambda: _enqueue_ticket(booking.pk))
-
-    return JsonResponse({
-        "status": "simulated",
-        "booking": str(booking.reference),
-        "payment_status": Payment.SIMULATED,
-        "message": "Demo booking confirmed. No money moved and no Razorpay payment was created.",
-    })
-
-
-@login_required
 def booking_history(request):
     bookings = Booking.objects.filter(user=request.user).select_related("movie", "theater", "show").prefetch_related("payments", "booking_seats__show_seat__seat").order_by("-booked_at")
     return render(request, "users/profile.html", {"bookings": bookings})
@@ -959,7 +853,7 @@ def ticket_download(request, booking_ref):
     # private file is missing from this web instance's local storage.
     booking = get_object_or_404(
         Booking.objects.filter(
-            payments__status__in=[Payment.CAPTURED, Payment.SIMULATED],
+            payments__status=Payment.CAPTURED,
             payments__amount=F("total_amount"),
         ).select_related("movie", "theater__city", "show__screen").prefetch_related(
             "booking_seats__show_seat__seat", "payments"
@@ -978,8 +872,8 @@ def ticket_download(request, booking_ref):
                 user=request.user,
                 status=Booking.CONFIRMED,
             )
-            if not booking.payments.filter(status__in=[Payment.CAPTURED, Payment.SIMULATED], amount=booking.total_amount).exists():
-                return HttpResponse("Ticket is unavailable until a matching captured payment or demo simulation exists.", status=409)
+            if not booking.payments.filter(status=Payment.CAPTURED, amount=booking.total_amount).exists():
+                return HttpResponse("Ticket is unavailable until a matching payment is captured.", status=409)
 
             pdf_bytes = None
             if booking.ticket_file:

@@ -1477,95 +1477,6 @@ class DomainTestCase(TestCase):
             Command._validate_target("postgresql", "bookmyseat_bench", False)
         Command._validate_target("postgresql", "bookmyseat_bench", True)
 
-    @override_settings(
-        BOOKMYSEAT_DEMO_MODE=True,
-        BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED=True,
-        RAZORPAY_KEY_ID="rzp_test_demo123",
-    )
-    def test_seat_selection_page_displays_live_selected_total_wiring(self):
-        self.client.force_login(self.user)
-        response = self.client.get(reverse("seat_selection", args=[self.show.id]))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, f'data-seat-price="{self.show.price}"')
-        self.assertContains(response, "Selected seats: 0")
-        self.assertContains(response, "amount.toLocaleString('en-IN'")
-        self.assertContains(response, "form.addEventListener('change', updateSelectedTotal)")
-
-    def test_desktop_demo_payment_is_distinct_gated_and_generates_ticket(self):
-        from pypdf import PdfReader
-        self.client.force_login(self.user)
-        page = self.client.get(reverse("seat_selection", args=[self.show.id]))
-        self.assertEqual(page.status_code, 200)
-        self.assertContains(page, 'data-desktop-demo-enabled="true"')
-        self.assertContains(page, "Simulate UPI payment (desktop demo only")
-
-        reserved = self.client.post(
-            reverse("reserve_seats", args=[self.show.id]), {"seats": [self.seats[0].pk]}
-        )
-        self.assertEqual(reserved.status_code, 201)
-        booking = Booking.objects.get(reference=reserved.json()["booking"])
-        real_order = Payment.objects.create(
-            booking=booking, amount=booking.total_amount,
-            idempotency_key="desktop-demo-existing-order",
-            provider_order_id="order_desktop_demo_existing",
-        )
-        result = self.client.post(reverse("desktop_demo_payment", args=[booking.reference]))
-        self.assertEqual(result.status_code, 200)
-        self.assertEqual(result.json()["status"], "simulated")
-        self.assertIn("No money moved", result.json()["message"])
-
-        booking.refresh_from_db()
-        real_order.refresh_from_db()
-        demo_payment = Payment.objects.get(booking=booking, status=Payment.SIMULATED)
-        self.show_seats[0].refresh_from_db()
-        self.assertEqual(booking.status, Booking.CONFIRMED)
-        self.assertEqual(real_order.status, Payment.CANCELLED)
-        self.assertTrue(demo_payment.transaction_id.startswith("demo_"))
-        self.assertIsNone(demo_payment.captured_at)
-        self.assertFalse(Payment.objects.filter(booking=booking, status=Payment.CAPTURED).exists())
-        self.assertEqual(self.show_seats[0].status, ShowSeat.BOOKED)
-
-        ticket = self.client.get(reverse("ticket_download", args=[booking.reference]))
-        self.assertEqual(ticket.status_code, 200)
-        self.assertEqual(ticket["Content-Type"], "application/pdf")
-        self.assertTrue(ticket.content.startswith(b"%PDF-"))
-        extracted = "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(ticket.content)).pages)
-        self.assertIn("DEMO SIMULATED - NO MONEY MOVED", extracted)
-
-    @override_settings(
-        BOOKMYSEAT_DEMO_MODE=True,
-        BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED=False,
-        RAZORPAY_KEY_ID="rzp_test_demo123",
-    )
-    def test_desktop_demo_payment_endpoint_is_hidden_when_flag_is_off(self):
-        self.client.force_login(self.user)
-        reserved = self.client.post(
-            reverse("reserve_seats", args=[self.show.id]), {"seats": [self.seats[0].pk]}
-        )
-        booking = Booking.objects.get(reference=reserved.json()["booking"])
-        response = self.client.post(reverse("desktop_demo_payment", args=[booking.reference]))
-        self.assertEqual(response.status_code, 404)
-        booking.refresh_from_db()
-        self.assertEqual(booking.status, Booking.PENDING)
-        self.assertFalse(Payment.objects.filter(booking=booking, status=Payment.SIMULATED).exists())
-
-    @override_settings(
-        BOOKMYSEAT_DEMO_MODE=True,
-        BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED=True,
-        RAZORPAY_KEY_ID="rzp_live_demo123",
-    )
-    def test_desktop_demo_payment_refuses_live_key_even_when_flag_is_on(self):
-        self.client.force_login(self.user)
-        reserved = self.client.post(
-            reverse("reserve_seats", args=[self.show.id]), {"seats": [self.seats[0].pk]}
-        )
-        booking = Booking.objects.get(reference=reserved.json()["booking"])
-        response = self.client.post(reverse("desktop_demo_payment", args=[booking.reference]))
-        self.assertEqual(response.status_code, 404)
-        booking.refresh_from_db()
-        self.assertEqual(booking.status, Booking.PENDING)
-        self.assertFalse(Payment.objects.filter(booking=booking, status=Payment.SIMULATED).exists())
-
     def test_ticket_pdf_contains_signature_and_download_requires_owner(self):
         from pypdf import PdfReader
         booking = self.create_confirmed_booking()
@@ -2662,9 +2573,7 @@ class DomainTestCase(TestCase):
                        "ondismiss", "signature_invalid", "payment_not_captured",
                        "More than one active reservation exists for this show", "Your Bookings",
                        "scrollIntoView", "reservationSubmitting", "buildCheckoutOptions",
-                       "test-runtime-config", "show_default_blocks: true", "error.metadata?.payment_id",
-                       "desktop-demo-payment", "DEMO CONFIRMED", "No money moved", "buildCheckoutOptions",
-                       "data-seat-price", "Selected seats:", "updateSelectedTotal"):
+                       "test-runtime-config", "show_default_blocks: true", "error.metadata?.payment_id"):
             self.assertContains(page, needle)
         self.assertNotContains(page, "success@razorpay")
         self.assertContains(page, "outcome.status === 'confirmed'")

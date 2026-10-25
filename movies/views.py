@@ -848,10 +848,71 @@ def booking_history(request):
 @login_required
 @require_GET
 def ticket_download(request, booking_ref):
-    booking = get_object_or_404(Booking, reference=booking_ref, user=request.user, status=Booking.CONFIRMED)
-    if not booking.ticket_file: return HttpResponse("Ticket is not ready", status=404)
-    response = HttpResponse(booking.ticket_file.open("rb"), content_type="application/pdf")
+    # Only the owner of a confirmed booking with a matching captured payment may
+    # download a ticket. Generate it on demand if Celery has not run yet or the
+    # private file is missing from this web instance's local storage.
+    booking = get_object_or_404(
+        Booking.objects.filter(
+            payments__status=Payment.CAPTURED,
+            payments__amount=F("total_amount"),
+        ).select_related("movie", "theater__city", "show__screen").prefetch_related(
+            "booking_seats__show_seat__seat", "payments"
+        ).distinct(),
+        reference=booking_ref,
+        user=request.user,
+        status=Booking.CONFIRMED,
+    )
+    try:
+        with transaction.atomic():
+            booking = get_object_or_404(
+                Booking.objects.select_for_update(of=("self",)).select_related(
+                    "movie", "theater__city", "show__screen"
+                ).prefetch_related("booking_seats__show_seat__seat", "payments"),
+                pk=booking.pk,
+                user=request.user,
+                status=Booking.CONFIRMED,
+            )
+            if not booking.payments.filter(status=Payment.CAPTURED, amount=booking.total_amount).exists():
+                return HttpResponse("Ticket is unavailable until a matching payment is captured.", status=409)
+
+            pdf_bytes = None
+            if booking.ticket_file:
+                try:
+                    with booking.ticket_file.open("rb") as saved_pdf:
+                        pdf_bytes = saved_pdf.read()
+                except OSError:
+                    # Render's local filesystem may not retain a ticket written by
+                    # another worker or by an earlier instance/deployment.
+                    logger.warning(
+                        "Stored ticket file is missing/unreadable; regenerating for booking %s",
+                        booking.pk,
+                        exc_info=True,
+                    )
+            if pdf_bytes is None:
+                from django.core import signing
+                from django.core.files.base import ContentFile
+                from .tasks import _render_pdf
+
+                token = signing.dumps({"ref": str(booking.reference)}, salt="bookmyseat.ticket")
+                pdf_bytes = _render_pdf(booking, token)
+                if not pdf_bytes.startswith(b"%PDF-"):
+                    raise ValueError("Ticket renderer did not return a PDF document.")
+                booking.ticket_file.save(
+                    f"ticket-{booking.reference}.pdf",
+                    ContentFile(pdf_bytes),
+                    save=True,
+                )
+    except Exception:
+        logger.exception("Ticket generation/download failed for booking %s", booking.pk)
+        return HttpResponse(
+            "Ticket generation failed. Your booking remains confirmed; please retry shortly.",
+            status=503,
+            content_type="text/plain; charset=utf-8",
+        )
+
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="ticket-{booking.reference}.pdf"'
+    response["Content-Length"] = str(len(pdf_bytes))
     return response
 
 

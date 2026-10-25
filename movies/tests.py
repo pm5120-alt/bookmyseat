@@ -1499,6 +1499,45 @@ class DomainTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.content.startswith(b"%PDF-"))
 
+    def test_ticket_download_generates_pdf_when_async_ticket_task_has_not_run(self):
+        booking = self.create_confirmed_booking()
+        self.assertFalse(booking.ticket_file)
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("ticket_download", args=[booking.reference]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertTrue(response.content.startswith(b"%PDF-"))
+        self.assertEqual(response["Content-Disposition"],
+                         f'attachment; filename="ticket-{booking.reference}.pdf"')
+        booking.refresh_from_db()
+        self.assertTrue(booking.ticket_file.name)
+        with booking.ticket_file.open("rb") as saved_pdf:
+            self.assertTrue(saved_pdf.read().startswith(b"%PDF-"))
+
+    def test_ticket_download_regenerates_file_missing_from_web_storage(self):
+        booking = self.create_confirmed_booking()
+        self.client.force_login(self.user)
+        url = reverse("ticket_download", args=[booking.reference])
+
+        first = self.client.get(url)
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(first.content.startswith(b"%PDF-"))
+        booking.refresh_from_db()
+        stored_name = booking.ticket_file.name
+        self.assertTrue(stored_name)
+        booking.ticket_file.storage.delete(stored_name)
+
+        second = self.client.get(url)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second["Content-Type"], "application/pdf")
+        self.assertTrue(second.content.startswith(b"%PDF-"))
+        booking.refresh_from_db()
+        self.assertTrue(booking.ticket_file.name)
+        with booking.ticket_file.open("rb") as saved_pdf:
+            self.assertTrue(saved_pdf.read().startswith(b"%PDF-"))
+
     def test_ticket_task_database_path_handles_show_and_legacy_booking_without_show(self):
         """Exercise task DB loading for both sides of the nullable show join.
 

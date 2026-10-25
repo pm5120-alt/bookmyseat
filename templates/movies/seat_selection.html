@@ -68,6 +68,22 @@
   const setStatus = text => { status.textContent = text; };
   const showRetry = () => { if (retryButton) retryButton.hidden = false; };
   const hideRetry = () => { if (retryButton) retryButton.hidden = true; };
+  const reserveButton = form.querySelector('button[type="submit"]');
+  let reservationSubmitting = false;
+  function showReservationError(error) {
+    let message = error?.message || 'Reservation failed.';
+    if (message.includes('More than one active reservation exists for this show')) {
+      message = 'This account already has multiple active reservations for this show, so payment was not started. ' +
+        'Open Profile → Your Bookings and cancel the duplicate unpaid reservation(s) for this show. ' +
+        'If cancellation says a payment is still being resolved, stop and contact support. ' +
+        'Then refresh this page and reserve seats once.';
+    }
+    setStatus(message);
+    status.setAttribute('role', 'alert');
+    status.setAttribute('tabindex', '-1');
+    status.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    try { status.focus({ preventScroll: true }); } catch (_) { status.focus(); }
+  }
 
   const TEST_MODE_HINT = 'Test Mode: no real money moves. Pay with a Razorpay test card ' +
     '(Mastercard 5267 3181 8797 5449 or Visa 4386 2894 0766 0153, any future expiry, any CVV). ' +
@@ -214,6 +230,9 @@
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    if (reservationSubmitting) return;
+    reservationSubmitting = true;
+    if (reserveButton) reserveButton.disabled = true;
     hideRetry();
     setStatus('Reserving seats…');
     try {
@@ -231,7 +250,9 @@
       openCheckout(order);
       await refresh();
     } catch (error) {
-      setStatus(error.message);
+      showReservationError(error);
+      if (reserveButton) reserveButton.disabled = false;
+      reservationSubmitting = false;
       await refresh();
     }
   });

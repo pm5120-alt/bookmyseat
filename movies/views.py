@@ -866,7 +866,9 @@ def cancel_booking(request, booking_ref):
         elif status_code == 202:
             messages.info(request, "Your refund request is being processed. The seats remain unavailable until the provider confirms the refund.")
         else:
-            messages.success(request, "Your unpaid reservation was cancelled and its seats were released.")
+            messages.success(request, payload.get(
+                "message", "Your unpaid reservation was cancelled and its seats were released."
+            ))
         return redirect("profile")
 
     with transaction.atomic():
@@ -878,8 +880,6 @@ def cancel_booking(request, booking_ref):
         if booking.status == Booking.PENDING:
             if booking.payments.filter(status__in=[Payment.CAPTURED, Payment.REFUNDED]).exists():
                 return response({"error": "Payment is already captured; request a refund instead."}, 409)
-            if booking.show_id and booking.show.starts_at <= timezone.now():
-                return response({"error": "A reservation cannot be cancelled after the show starts."}, 409)
             rows = ShowSeat.objects.select_for_update().filter(booking_seats__booking=booking, active_booking=booking, status=ShowSeat.HELD, held_by=request.user).order_by("seat_id")
             for row in rows:
                 row.status, row.held_by, row.hold_expires_at, row.active_booking = ShowSeat.AVAILABLE, None, None, None
@@ -887,7 +887,14 @@ def cancel_booking(request, booking_ref):
             Payment.objects.filter(booking=booking, status__in=[Payment.CREATED, Payment.AUTHORIZED]).update(status=Payment.CANCELLED)
             booking.status = Booking.CANCELLED
             booking.save(update_fields=["status"])
-            return response({"status": "cancelled"}, 200)
+            show_started = bool(booking.show_id and booking.show.starts_at <= timezone.now())
+            message = (
+                "The show has started, so this unpaid reservation was closed and its seats were released. "
+                "If a payment is later captured by the provider, it will be flagged for refund review."
+                if show_started else
+                "Your unpaid reservation was cancelled and its seats were released."
+            )
+            return response({"status": "cancelled", "message": message}, 200)
         retrying_failed_refund = booking.status == Booking.CANCELLATION_PENDING and booking.payments.filter(status=Payment.CAPTURED, refund_status="failed").exists()
         if booking.status != Booking.CONFIRMED and not retrying_failed_refund:
             return response({"error": "This booking cannot be cancelled in its current state."}, 409)

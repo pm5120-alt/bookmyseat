@@ -1314,6 +1314,36 @@ class DomainTestCase(TestCase):
         self.assertIn(b"'=1+1", all_reports_body)
         self.assertIn(str(paid.reference).encode(), all_reports_body)
 
+    def test_pending_unpaid_reservation_can_be_cancelled_after_show_starts(self):
+        self.client.force_login(self.user)
+        reserved = self.client.post(
+            reverse("reserve_seats", args=[self.show.pk]), {"seats": [self.seats[0].pk]}
+        )
+        self.assertEqual(reserved.status_code, 201)
+        booking = Booking.objects.get(reference=reserved.json()["booking"])
+        payment = Payment.objects.create(
+            booking=booking, amount=booking.total_amount, idempotency_key="test-late-cancel-order",
+            status=Payment.CREATED, order_state=Payment.ORDER_CREATED,
+            provider_order_id="order_late_cancel",
+        )
+        Show.objects.filter(pk=self.show.pk).update(starts_at=timezone.now() - timedelta(minutes=1))
+
+        response = self.client.post(
+            reverse("cancel_booking", args=[booking.reference]), follow=True
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The show has started, so this unpaid reservation was closed")
+        booking.refresh_from_db()
+        payment.refresh_from_db()
+        self.show_seats[0].refresh_from_db()
+        self.assertEqual(booking.status, Booking.CANCELLED)
+        self.assertEqual(payment.status, Payment.CANCELLED)
+        self.assertEqual(
+            (self.show_seats[0].status, self.show_seats[0].held_by_id,
+             self.show_seats[0].hold_expires_at, self.show_seats[0].active_booking_id),
+            (ShowSeat.AVAILABLE, None, None, None),
+        )
+
     def test_analytics_metrics_include_refunds_cancellations_occupancy_and_growth(self):
         from movies.views import _mark_payment_refunded
         now = timezone.now()

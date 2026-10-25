@@ -74,6 +74,8 @@ BOOKING_HOLD_SECONDS = SEAT_HOLD_SECONDS
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+# Optional public Razorpay Payment Configuration ID (config_...). Empty uses the account default.
+RAZORPAY_CONFIG_ID = os.environ.get("RAZORPAY_CONFIG_ID", "").strip()
 SECURE_SSL_REDIRECT = not DEBUG and os.environ.get("SECURE_SSL_REDIRECT", "true").lower() == "true"
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

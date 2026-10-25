@@ -96,6 +96,7 @@
           order_id: order.order_id,
           amount: order.amount,
           currency: order.currency,
+          ...(order.checkout_config_id ? { checkout_config_id: order.checkout_config_id } : {}),
           name: 'BookMySeat',
           description: 'Movie tickets',
           handler: async result => {

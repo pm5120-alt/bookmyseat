@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, time, timedelta
 from decimal import Decimal
@@ -438,9 +439,20 @@ def _payment_resolution_conflict(payment, action):
     return response
 
 
+_RAZORPAY_CONFIG_ID_RE = re.compile(r"^config_[A-Za-z0-9]{6,40}$")
+
+
 def _order_payload(payment):
-    return {"key": settings.RAZORPAY_KEY_ID, "order_id": payment.provider_order_id, "amount": int(payment.amount * 100),
-            "currency": payment.currency, "payment_id": payment.id}
+    payload = {"key": settings.RAZORPAY_KEY_ID, "order_id": payment.provider_order_id, "amount": int(payment.amount * 100),
+               "currency": payment.currency, "payment_id": payment.id}
+    # Optional explicit configuration supported by Razorpay Standard Checkout.
+    # Only a validated public ID is sent to the browser; secrets are never included.
+    config_id = getattr(settings, "RAZORPAY_CONFIG_ID", "")
+    if config_id and _RAZORPAY_CONFIG_ID_RE.fullmatch(config_id):
+        payload["checkout_config_id"] = config_id
+    elif config_id:
+        logger.warning("RAZORPAY_CONFIG_ID is set but malformed; ignoring it.")
+    return payload
 
 
 @login_required

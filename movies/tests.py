@@ -1756,6 +1756,62 @@ class DomainTestCase(TestCase):
         self.assertEqual((payment.provider_order_id, payment.order_state, payment.status), ("order_new_1", Payment.ORDER_CREATED, Payment.CREATED))
         self.assertEqual(client.return_value.order.create.call_args[0][0]["receipt"], payment.idempotency_key)
 
+    # --- Optional Razorpay Payment Configuration ID (mocked SDK tests; not a real provider transaction) ---
+    @override_settings(RAZORPAY_KEY_ID="test-key", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_CONFIG_ID="")
+    def test_checkout_payload_omits_config_id_when_not_configured(self):
+        booking, _ = self._reserved_booking_with_order("unused-cfg-0")
+        Payment.objects.filter(booking=booking).delete()
+        with patch("razorpay.Client") as client:
+            client.return_value.order.create.return_value = {"id": "order_cfg_0"}
+            response = self.client.post(reverse("create_payment_order", args=[booking.reference]))
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertNotIn("checkout_config_id", body)
+        self.assertEqual((body["key"], body["order_id"], body["amount"], body["currency"]), ("test-key", "order_cfg_0", 25000, "INR"))
+        self.assertNotIn("test-secret", json.dumps(body))
+
+    @override_settings(RAZORPAY_KEY_ID="test-key", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_WEBHOOK_SECRET="hook-secret",
+                       RAZORPAY_CONFIG_ID="config_Abc123DefGhi")
+    def test_checkout_payload_includes_config_id_only_and_order_request_is_unchanged(self):
+        booking, _ = self._reserved_booking_with_order("unused-cfg-1")
+        Payment.objects.filter(booking=booking).delete()
+        with patch("razorpay.Client") as client:
+            client.return_value.order.create.return_value = {"id": "order_cfg_1"}
+            response = self.client.post(reverse("create_payment_order", args=[booking.reference]))
+            order_request = client.return_value.order.create.call_args[0][0]
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["checkout_config_id"], "config_Abc123DefGhi")
+        self.assertEqual(set(order_request), {"amount", "currency", "receipt"})
+        dumped = json.dumps(body)
+        self.assertNotIn("test-secret", dumped)
+        self.assertNotIn("hook-secret", dumped)
+
+    @override_settings(RAZORPAY_KEY_ID="test-key", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_CONFIG_ID='not a config id"<script>')
+    def test_malformed_config_id_is_not_forwarded_to_browser(self):
+        booking, _ = self._reserved_booking_with_order("unused-cfg-2")
+        Payment.objects.filter(booking=booking).delete()
+        with patch("razorpay.Client") as client:
+            client.return_value.order.create.return_value = {"id": "order_cfg_2"}
+            response = self.client.post(reverse("create_payment_order", args=[booking.reference]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("checkout_config_id", response.json())
+
+    @override_settings(RAZORPAY_KEY_ID="test-key", RAZORPAY_KEY_SECRET="test-secret", RAZORPAY_CONFIG_ID="config_Abc123DefGhi")
+    def test_rejected_order_with_config_id_is_safe_and_never_marks_paid(self):
+        BadRequestError = type("BadRequestError", (Exception,), {})  # view classifies by class name
+        booking, _ = self._reserved_booking_with_order("unused-cfg-3")
+        Payment.objects.filter(booking=booking).delete()
+        with patch("razorpay.Client") as client:
+            client.return_value.order.create.side_effect = BadRequestError("rejected")
+            response = self.client.post(reverse("create_payment_order", args=[booking.reference]))
+        self.assertEqual(response.status_code, 502)
+        self.assertNotIn("checkout_config_id", response.json())
+        self.assertNotIn("order_id", response.json())
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, Booking.PENDING)
+        self.assertFalse(Payment.objects.filter(booking=booking, status=Payment.CAPTURED).exists())
+
     @override_settings(RAZORPAY_KEY_ID="test-key", RAZORPAY_KEY_SECRET="test-secret")
     def test_provider_timeout_is_recorded_as_uncertain_and_blocks_blind_retry(self):
         booking, _ = self._reserved_booking_with_order("unused-3")

@@ -13,7 +13,7 @@
 
 **The application is deployed and available for reviewer inspection. A fresh Razorpay Test Mode key pair was saved to Render, and the environment deployment was reported Live. A checkout attempt after that deployment still displayed “No appropriate payment method found.” Payment checkout remains blocked/unverified.**
 
-The key-pair environment update was deployed by Render in `dep-dbeoac8ae00c73dq24h0`. The owner subsequently retried checkout and shared a screenshot showing the same payment-method error. The optional `RAZORPAY_CONFIG_ID` patch is not merged into or deployed with the current application code. The source repository and live demo remain available for inspection.
+The key-pair environment update was deployed by Render in `dep-dbeoac8ae00c73dq24h0`. The owner subsequently retried checkout and shared a screenshot showing the same payment-method error. The optional `RAZORPAY_CONFIG_ID` patch has now been added to source. It reads a public `config_...` ID from the environment, validates its format, includes `checkout_config_id` in the order response only when valid, and passes that value into Standard Checkout. Focused mocked-provider tests were added, but this environment cannot run Django tests because Django is not installed and package downloads are blocked. The patch still requires hosted deployment and a fresh Razorpay Test Mode checkout attempt. The source repository and live demo remain available for inspection.
 
 The codebase includes movie discovery, registration and authentication, show-specific seat inventory, seat reservation, booking management, Razorpay order/payment verification and webhook handling, admin analytics, and digital ticket generation/delivery. Those implemented code paths are not equivalent to proof that every external integration currently succeeds on the hosted demo.
 
@@ -39,11 +39,14 @@ The owner retried checkout after the new key-pair deployment was Live and again 
 
 ### Required follow-up before calling payments verified
 
-1. Review the optional config-ID patch and run the Django payment tests in an environment with dependencies installed before merging or deploying it.
-2. If the patch is deployed, add `RAZORPAY_CONFIG_ID` to Render using the exact public `config_...` ID copied from the saved “BookMySeat Test” configuration. This variable is not read by the current live code until the patch is deployed.
-3. Confirm that usable payment methods are actually available/enabled in Razorpay Test Mode. A display configuration controls what is shown but does not activate methods unavailable to the account.
-4. Retry checkout and inspect the browser Network tab. Confirm the order-create response includes the intended `checkout_config_id` and that the key ID matches the Test Mode key pair in the Dashboard.
-5. Verify the webhook URL (`https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`) and secret match, then complete a successful simulated payment, server-side verification, webhook processing, and booking confirmation before declaring payment fixed.
+The Razorpay Dashboard screenshot shows the saved configuration as `config_Trhb8JAuyT6pgZ`. That public configuration ID has been placed in Render's `RAZORPAY_CONFIG_ID` environment variable. The Render environment update triggered a deployment with the previous source; the new application-code patch must also be deployed before the variable has an effect.
+
+1. Wait for the new application-code deployment to finish and show **Live**. The environment variable is already saved in Render.
+2. After deployment, retry seat reservation and checkout. Check the order-create response in the browser Network tab; it should contain `checkout_config_id` when configured.
+3. Confirm usable payment methods are enabled/available in the Razorpay Test Mode account. A display configuration controls what is shown but does not activate payment methods unavailable to the account.
+4. Confirm the key in the order response matches the API Key ID for the same Razorpay Test Mode account.
+5. Verify the webhook URL (`https://bookmyseat-demo-drmf.onrender.com/movies/payments/webhook/razorpay/`) and ensure its secret matches Render's `RAZORPAY_WEBHOOK_SECRET`. Complete a successful simulated payment and confirm server-side verification, webhook processing and the final booking status before declaring payment fixed.
+
 ## 4. Other feature areas
 
 | Area | Current evidence / status |
@@ -51,7 +54,7 @@ The owner retried checkout after the new key-pair deployment was Live and again 
 | Movie catalogue and poster fallback | Prior poster fallback release deployed; Render build collected 133 static files. |
 | Discovery and recommendation fallback | Code/test changes are present in the repository; earlier project-developer functional checks were reported. |
 | Seat selection and reservation | Implemented in source; earlier project-developer testing was reported. Live concurrent-booking acceptance is not independently demonstrated by this report. |
-| Razorpay payment, capture and webhook | **Failed visibly after the Test Mode key deployment; “No appropriate payment method found” persisted. The optional config-ID patch is not yet deployed or tested.** |
+| Razorpay payment, capture and webhook | **The error persisted after the Test Mode key deployment; config-ID patch added to source but hosted payment and Django test suite remain unverified.** |
 | Admin analytics | Implemented; prior project-developer functional checks were reported. |
 | Digital tickets and email | Implemented; earlier test-environment checks were reported. Real SMTP delivery from the current hosted demo is not established by this report. |
 | Automated-test total | Historical report files show 109 versus 110 SQLite tests; count discrepancy remains unreconciled. |
@@ -76,7 +79,7 @@ No API-key, API-secret, webhook-secret, password, or other credential value is i
 
 ## 8. Final assessment
 
-**Current result: deployment available; Test Mode API-key deployment is Live; checkout still displays “No appropriate payment method found”; optional config-ID patch not deployed/tested; external acceptance remains partial.**
+**Current result: deployment available; Test Mode API-key deployment is Live; checkout previously displayed “No appropriate payment method found”; the config-ID patch is now in source and awaits deployment and retest; external acceptance remains partial.**
 
 - **Public website:** https://bookmyseat-demo-drmf.onrender.com/
 - **Source repository:** https://github.com/pm5120-alt/bookmyseat

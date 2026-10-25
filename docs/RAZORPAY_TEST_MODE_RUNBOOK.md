@@ -21,7 +21,7 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 
 ## Checkout configuration and Test Mode payment methods
 
-BookMySeat does not pass a runtime `config.display` method override. It uses Razorpay Standard Checkout's native method/platform selection. If `RAZORPAY_CONFIG_ID` is configured, the public configuration ID is passed as `checkout_config_id`; otherwise the account's default Checkout configuration is used.
+In Test Mode, BookMySeat restores the prior runtime `config.display` request for Card, UPI, Wallet and Netbanking and does not pass `checkout_config_id`, to avoid binding sandbox attempts to the Dashboard config ID while the regression is investigated. In Live Mode, the configured public `RAZORPAY_CONFIG_ID` is passed as `checkout_config_id`; otherwise the account default is used. The runtime list cannot enable a method the Razorpay account has not enabled.
 
 Payment methods that appear are limited by the Razorpay account's enabled methods and the selected Dashboard configuration. A code-level configuration cannot enable Cards, Wallets or bank issuers that Razorpay has not enabled. The current Dashboard screenshots show UPI and Netbanking settings, with no visible Cards option and no available bank list, so account-level Test Mode activation still requires Razorpay Support.
 

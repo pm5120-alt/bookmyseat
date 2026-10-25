@@ -13,7 +13,7 @@ Status labels: VERIFIED = code inspection/local static checks; DOCUMENTED = offi
 
 ## Changes in this patch
 
-- Removed the runtime Checkout display override and added `buildCheckoutOptions(order)` to pass the order and an optional Dashboard configuration ID through to Razorpay.
+- Restored the pre-Claude Test Mode runtime Checkout configuration and stopped passing the Dashboard `checkout_config_id` in Test Mode, because the failure appeared after that path was changed. Live Mode continues to pass the configured ID. This isolates the suspected regression; it does not make desktop Test Mode QR payable by a real UPI app.
 - Replaced the stale `success@razorpay` advice with accurate Test Mode and desktop/mobile guidance.
 - Added regression tests asserting that no runtime `config` override is passed, and that an optional `checkout_config_id` is passed consistently in Test and Live modes.
 - Updated the runbook to distinguish desktop UPI QR, mobile-web UPI Intent, the Dashboard preview, and real server-side payment verification.
@@ -21,7 +21,7 @@ Status labels: VERIFIED = code inspection/local static checks; DOCUMENTED = offi
 
 ## Safety preserved
 
-No fake success path, no switch to Live Mode, no payment signature bypass, and no claim that Card or Netbanking has been enabled. The patch corrects the Checkout integration but cannot activate methods at Razorpay account level or make desktop web launch mobile UPI apps.
+No fake success path, no switch to Live Mode, and no payment signature bypass. The Test Mode runtime configuration is restored as a diagnostic rollback; it cannot activate account-disabled payment methods or make desktop web launch mobile UPI apps.
 
 ## Validation status
 

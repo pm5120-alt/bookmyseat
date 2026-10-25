@@ -21,12 +21,13 @@ All Razorpay behavior in the automated suite uses test doubles. This runbook pro
 
 ## Checkout configuration and Test Mode payment methods
 
-In Test Mode, BookMySeat restores the prior runtime `config.display` request for Card, UPI, Wallet and Netbanking and does not pass `checkout_config_id`, to avoid binding sandbox attempts to the Dashboard config ID while the regression is investigated. In Live Mode, the configured public `RAZORPAY_CONFIG_ID` is passed as `checkout_config_id`; otherwise the account default is used. The runtime list cannot enable a method the Razorpay account has not enabled.
+In both Test and Live Mode, BookMySeat passes the backend's validated public `checkout_config_id` to Standard Checkout when configured. Without a valid ID, Checkout uses the account default. No runtime `config.display` method list is sent. A configuration ID cannot make an account-ineligible payment method available.
 
 Payment methods that appear are limited by the Razorpay account's enabled methods and the selected Dashboard configuration. A code-level configuration cannot enable Cards, Wallets or bank issuers that Razorpay has not enabled. The current Dashboard screenshots show UPI and Netbanking settings, with no visible Cards option and no available bank list, so account-level Test Mode activation still requires Razorpay Support.
 
-Platform expectation:
+Platform and eligibility:
 - Desktop web: Razorpay UPI Intent app selection is not supported; Checkout displays a QR code instead. A Test Mode QR must not be treated as a real payment request scanned with a production UPI app.
+- Razorpay's UPI documentation says UPI Collect was deprecated effective 28 February 2026, with exemptions that do not list ordinary desktop web. Ask Razorpay Support to confirm any merchant-specific exception or Test Mode allowance before expecting UPI ID entry on desktop.
 - Mobile web (Android/iOS): Razorpay documents UPI Intent app selection for supported mobile-web flows when UPI Intent is enabled for the account. Test Mode simulation and Live Mode transactions are different; validate only through the documented sandbox methods.
 - Dashboard configuration preview: a success animation is only a preview simulation. It does not prove that the website's order creation, payment callback, server verification, and booking confirmation work end to end.
 

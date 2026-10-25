@@ -92,10 +92,8 @@
     'Google Pay/PhonePe app selection is a mobile-web flow when UPI Intent is enabled for the account.';
 
   
-  // Preserve the prior Test Mode path to avoid applying an account-specific Dashboard
-  // configuration to a sandbox attempt. In Live Mode, use the configured checkout_config_id.
-  // Runtime display configuration can only arrange methods available to the Razorpay account;
-  // it cannot enable a disabled method or turn a desktop QR into a mobile UPI Intent.
+  // Let Razorpay use its Dashboard configuration for both Test and Live Mode.
+  // A configuration ID controls available checkout methods, subject to account eligibility.
   function buildCheckoutOptions(order) {
     const options = {
       key: order.key,
@@ -105,25 +103,7 @@
       name: 'BookMySeat',
       description: 'Movie tickets',
     };
-    if (order.test_mode) {
-      options.config = {
-        display: {
-          blocks: {
-            all_methods: {
-              name: 'All Payment Options',
-              instruments: [
-                { method: 'card' },
-                { method: 'upi' },
-                { method: 'wallet' },
-                { method: 'netbanking' },
-              ],
-            },
-          },
-          sequence: ['block.all_methods'],
-          preferences: { show_default_blocks: true },
-        },
-      };
-    } else if (order.checkout_config_id) {
+    if (order.checkout_config_id) {
       options.checkout_config_id = order.checkout_config_id;
     }
     return options;
@@ -221,7 +201,7 @@
     const testMode = Boolean(order.test_mode);
     console.info('[BookMySeat] Opening Razorpay Checkout', {
       mode: testMode ? 'test' : 'live',
-      checkout_configuration: testMode ? 'test-runtime-config' : (order.checkout_config_id || 'account-default'),
+      checkout_configuration: order.checkout_config_id || 'account-default',
     });
     try {
       const checkout = new Razorpay({

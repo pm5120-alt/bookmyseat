@@ -1,28 +1,31 @@
-# Razorpay Checkout diagnosis (Test Mode) — 2026-10-25
+# Razorpay Checkout diagnosis — 25 October 2026
 
-Status labels: VERIFIED = code inspection/local static checks; DOCUMENTED = official Razorpay documentation; UNVERIFIED = requires the Dashboard or an actual browser transaction.
+## Code correction
 
-## Root-cause assessment
+`buildCheckoutOptions(order)` no longer sends a runtime `config.display` method list in Test Mode. When the backend supplies a validated public `checkout_config_id`, the browser now passes it to Standard Checkout in both Test and Live Mode. Without one, Checkout uses the account default. The backend's existing validation, order creation, signature verification, provider order/payment status checks, captured-payment requirement, idempotency, seat holds, booking confirmation, and ticket generation were not changed.
 
-1. The Dashboard's green UPI app preview is a UI simulation, not proof that BookMySeat can complete a real provider-side test transaction.
-2. The deployed website had a runtime `config.display.blocks.all_methods` override. This took over method/flow selection instead of allowing Razorpay's account configuration and device capabilities to drive Checkout. The override has been removed.
-3. BookMySeat now uses Razorpay Standard Checkout's native options and passes `checkout_config_id` only when the backend returns a valid configured ID. The backend order creation and signature/provider-status verification remain in place.
-4. Razorpay documents that UPI Intent app selection is supported on mobile web (when enabled) but is not supported on desktop web. Desktop Checkout automatically displays a QR code instead. Therefore, seeing QR rather than Google Pay/PhonePe buttons on a Windows desktop is expected behavior, not a frontend bug.
-5. A Test Mode QR is not a normal live UPI payment request. Do not scan it with a real UPI app to simulate a successful sandbox payment.
-6. The current screenshots show UPI and Netbanking configuration sections, but no Card option and an empty bank list. Whether Cards/Netbanking are available in this account's Test Mode cannot be confirmed by code inspection and requires Razorpay Support/dashboard activation.
+Regression coverage asserts the Test Mode and Live Mode configuration ID behavior, no runtime method override, and account-default behavior when no ID is supplied.
 
-## Changes in this patch
+## Razorpay rules and this merchant's status
 
-- Restored the pre-Claude Test Mode runtime Checkout configuration and stopped passing the Dashboard `checkout_config_id` in Test Mode, because the failure appeared after that path was changed. Live Mode continues to pass the configured ID. This isolates the suspected regression; it does not make desktop Test Mode QR payable by a real UPI app.
-- Replaced the stale `success@razorpay` advice with accurate Test Mode and desktop/mobile guidance.
-- Added regression tests asserting that no runtime `config` override is passed, and that an optional `checkout_config_id` is passed consistently in Test and Live modes.
-- Updated the runbook to distinguish desktop UPI QR, mobile-web UPI Intent, the Dashboard preview, and real server-side payment verification.
-- No backend views, models, migrations, idempotency, or seat reservation rules are changed by this checkout-options patch.
+- Razorpay's Test Mode integration documentation lists `success@razorpay` and `failure@razorpay` for the UPI test flow, when UPI ID entry is offered by Checkout.
+- Razorpay's UPI documentation says UPI Collect is deprecated effective 28 February 2026. The listed exceptions are MCC 6012/6211, iOS mobile app/mobile web, specified mandate operations, eRupi, and PACB businesses. Ordinary desktop web is not listed. The desktop UPI ID-entry flow therefore cannot be assumed permitted for this merchant in October 2026; Razorpay Support must confirm any merchant-specific eligibility or sandbox exception.
+- Razorpay's UPI Intent documentation says Desktop Web does not support Intent and displays a QR. The UPI ID field is a Collect flow and is distinct from that QR flow.
+- Razorpay's Standard Checkout documentation supports using a Dashboard configuration ID in Checkout options. Passing the ID selects the configured payment experience; it does not create eligibility for a restricted method.
+- The supplied repository notes from the earlier Dashboard investigation report Account Access as Limited, site/app review Under Review, and the saved test configuration showing Netbanking only, with no usable banks. A prior Razorpay-hosted Test Mode Payment Link reportedly showed the same “No appropriate payment method found” error. These observations point to account/configuration availability, but they do not reveal the exact current Dashboard configuration ID or prove the present eligibility state.
 
-## Safety preserved
+The application cannot inspect the merchant's authenticated Dashboard from this source checkout. The exact current configuration ID, enabled methods, and account eligibility remain **unverified**. The corrected code now honors the ID configured by the merchant; the account must be reviewed by Razorpay.
 
-No fake success path, no switch to Live Mode, and no payment signature bypass. The Test Mode runtime configuration is restored as a diagnostic rollback; it cannot activate account-disabled payment methods or make desktop web launch mobile UPI apps.
+## Dashboard and Support actions
 
-## Validation status
+In Test Mode, open the active Payment Configuration and confirm which configuration ID is attached to the payment gateway and which methods are enabled. If UPI ID/Collect is offered, ask Razorpay to confirm in writing that this merchant is eligible to use it on desktop web after the 28 February 2026 deprecation, and whether Test Mode follows the same restriction. If it is not offered, do not try to force-enable it with runtime JavaScript. Use the account's supported UPI QR/Intent or other enabled test methods, or wait for Razorpay to activate an eligible method.
 
-The uploaded source report states that 128 Django tests passed in the creator's environment. In the current environment, Python compilation, JavaScript syntax and ZIP integrity were checked; Django is not installed here, so the Django suite has not been independently rerun. A real browser/Android test and a Razorpay Test Mode transaction remain unverified.
+Suggested support request:
+
+> Our Razorpay account currently reports Account Access: Limited and our website/app review is Under Review. In Test Mode, Standard Checkout displays only a UPI QR (or “No appropriate payment method found”); we need to validate the documented `success@razorpay` / `failure@razorpay` UPI test flow on Windows desktop. Please confirm (1) the active Test Mode payment configuration ID and methods attached to it, (2) whether UPI Collect/UPI ID entry is enabled for this merchant, and (3) whether this merchant is eligible for desktop UPI Collect after the NPCI deprecation effective 28 February 2026, including any Test Mode exception. If not eligible, please identify the supported desktop sandbox methods and the account activation steps required. We will use Test Mode keys only.
+
+## Acceptance status
+
+The source correction and automated regression tests are local code work. No real Razorpay transaction, hosted UPI ID field, provider payment ID/signature, server verification, booking confirmation, or downloaded ticket PDF was produced during this task. The account-side preconditions and live browser transaction are **NOT VERIFIED**. Do not represent the final acceptance criterion as passed until a genuine hosted sandbox transaction and its Django verification/ticket are evidenced.
+
+Local checks actually run for this patch: Python source compilation passed; a Node check exercised the three checkout-option cases (Test with config ID, Live with config ID, and Test without config ID) and passed; `git diff --check` passed. The Django test suite, `manage.py check`, and `makemigrations --check` could not run because Django is not installed in the available Python environments. Installing project dependencies was attempted, but downloading Django stalled. These Django checks are **NOT RUN**, not passed.

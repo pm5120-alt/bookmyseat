@@ -1482,6 +1482,15 @@ class DomainTestCase(TestCase):
         BOOKMYSEAT_DESKTOP_DEMO_PAYMENT_ENABLED=True,
         RAZORPAY_KEY_ID="rzp_test_demo123",
     )
+    def test_seat_selection_page_displays_live_selected_total_wiring(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("seat_selection", args=[self.show.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'data-seat-price="{self.show.price}"')
+        self.assertContains(response, "Selected seats: 0")
+        self.assertContains(response, "amount.toLocaleString('en-IN'")
+        self.assertContains(response, "form.addEventListener('change', updateSelectedTotal)")
+
     def test_desktop_demo_payment_is_distinct_gated_and_generates_ticket(self):
         from pypdf import PdfReader
         self.client.force_login(self.user)
@@ -2654,7 +2663,8 @@ class DomainTestCase(TestCase):
                        "More than one active reservation exists for this show", "Your Bookings",
                        "scrollIntoView", "reservationSubmitting", "buildCheckoutOptions",
                        "test-runtime-config", "show_default_blocks: true", "error.metadata?.payment_id",
-                       "desktop-demo-payment", "DEMO CONFIRMED", "No money moved", "buildCheckoutOptions"):
+                       "desktop-demo-payment", "DEMO CONFIRMED", "No money moved", "buildCheckoutOptions",
+                       "data-seat-price", "Selected seats:", "updateSelectedTotal"):
             self.assertContains(page, needle)
         self.assertNotContains(page, "success@razorpay")
         self.assertContains(page, "outcome.status === 'confirmed'")

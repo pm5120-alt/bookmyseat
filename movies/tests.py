@@ -1497,7 +1497,7 @@ class DomainTestCase(TestCase):
         page = self.client.get(reverse("seat_selection", args=[self.show.id]))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'data-desktop-demo-enabled="true"')
-        self.assertContains(page, "Simulate desktop demo payment (no money moved)")
+        self.assertContains(page, "Simulate UPI payment (desktop demo only")
 
         reserved = self.client.post(
             reverse("reserve_seats", args=[self.show.id]), {"seats": [self.seats[0].pk]}
